@@ -1,1 +1,0 @@
-Credits: https://github.com/sampsyo/bril/
