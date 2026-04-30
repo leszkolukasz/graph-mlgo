@@ -1,0 +1,19 @@
+name: graph-mlgo
+channels:
+  - local
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - cmake
+  - ninja
+  - scikit-build-core
+  - pybind11
+  
+  - llvmdev
+  - llvmlite
+
+  - datasets>=4.8.5
+  - gymnasium>=1.3.0
+  - loguru>=0.7.3

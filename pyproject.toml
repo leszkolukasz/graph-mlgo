@@ -1,3 +1,7 @@
+[build-system]
+requires = ["scikit-build-core>=0.8.0", "pybind11"]
+build-backend = "scikit_build_core.build"
+
 [project]
 name = "graph-mlgo"
 version = "0.1.0"
@@ -5,8 +9,12 @@ description = "GraphMLGO - Topology-aware Machine Learning Guided Compiler Optim
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "llvmlite", # needs to install version build by conda
     "datasets>=4.8.5",
     "gymnasium>=1.3.0",
-    "llvmlite>=0.47.0",
     "loguru>=0.7.3",
 ]
+
+[tool.scikit-build]
+cmake.source-dir = "src/cpp"
+wheel.packages = ["src/graph_mlgo"]

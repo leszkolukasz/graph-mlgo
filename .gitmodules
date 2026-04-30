@@ -1,0 +1,4 @@
+[submodule "external/llvmlite"]
+	path = external/llvmlite
+	url = https://github.com/numba/llvmlite.git
+	branch = release0.47
