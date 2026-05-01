@@ -2,21 +2,24 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax.training.train_state import TrainState
+import gymnasium as gym
 
 from .utils import compute_gae, ppo_loss, init_running_norm, update_running_norm, normalize
 from .types import Transition, RolloutInfo, RunnerState
 from .config import PPOConfig
+from .networks import PPOAgent
+
 
 class PPOTrainer:
-    def __init__(self, config: PPOConfig, env, agent):
+    
+    def __init__(self, config: PPOConfig, env: gym.Env, agent: PPOAgent):
         self.config = config
         self.env = env
         self.agent = agent
 
     def init_runner(self, rng: jax.Array):
-        rng, init_rng, reset_rng = jax.random.split(rng, 3)
-        env_state = self.env.reset(reset_rng)
-        obs = env_state.obs
+        rng, init_rng = jax.random.split(rng, 2)
+        obs, _ = self.env.reset()
         obs_dim = obs.shape[-1]
 
         params = self.agent.init(init_rng, jnp.zeros((1, obs_dim)))
@@ -47,7 +50,6 @@ class PPOTrainer:
 
         return RunnerState(
             train_state=train_state,
-            env_state=env_state,
             obs=obs,
             rng=rng,
             obs_norm=obs_norm,
@@ -82,10 +84,10 @@ class PPOTrainer:
                 runner_state.train_state.params, obs_in, method=agent.critic
             )
 
-            next_env_state = env.step(runner_state.env_state, action)
-            next_obs = next_env_state.obs
-            reward = next_env_state.reward
-            done = next_env_state.done.astype(jnp.float32)
+            next_obs, reward, terminated, truncated, _ = env.step(action)
+            next_obs = jnp.array(next_obs, dtype=jnp.float32)
+            reward = jnp.array(reward, dtype=jnp.float32)
+            done = jnp.logical_or(terminated, truncated).astype(jnp.float32)
 
             return_for_norm = runner_state.running_returns * cfg.gamma + reward
             if cfg.normalize_reward:
@@ -110,7 +112,7 @@ class PPOTrainer:
                 action=action,
                 reward=reward_out,
                 done=done,
-                value=value,
+                value=value, # ty: ignore
                 log_prob=log_prob,
             )
             rollout_info = RolloutInfo(
@@ -120,7 +122,6 @@ class PPOTrainer:
             )
             next_carry = RunnerState(
                 train_state=runner_state.train_state,
-                env_state=next_env_state,
                 obs=next_obs,
                 rng=rng,
                 obs_norm=obs_norm,
@@ -233,7 +234,6 @@ class PPOTrainer:
 
             next_runner_state = RunnerState(
                 train_state=train_state,
-                env_state=state.env_state,
                 obs=state.obs,
                 rng=rng,
                 obs_norm=state.obs_norm,

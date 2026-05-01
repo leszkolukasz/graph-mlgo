@@ -24,7 +24,6 @@ class RunningNorm(NamedTuple):
 
 class RunnerState(NamedTuple):
     train_state: object
-    env_state: object
     obs: jnp.ndarray
     rng: jnp.ndarray
     obs_norm: RunningNorm

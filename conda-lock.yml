@@ -13,11 +13,13 @@
 version: 1
 metadata:
   content_hash:
-    linux-64: 26df714acc8bf38427acea2214398f88770f8aeefb2839ce38e11dfced47810a
+    linux-64: 64a6904f0484dc2d16407115c7363fdccb6e542b79a427823ab0c066d25c8025
   channels:
   - url: local
     used_env_vars: []
   - url: conda-forge
+    used_env_vars: []
+  - url: nvidia
     used_env_vars: []
   - url: defaults
     used_env_vars: []
@@ -504,6 +506,32 @@ package:
     sha256: d77a24be15e283d83214121428290dbe55632a6e458378205b39c550afa008cf
   category: main
   optional: false
+- name: binutils_impl_linux-64
+  version: 2.45.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    ld_impl_linux-64: 2.45.1
+    sysroot_linux-64: ''
+    zstd: '>=1.5.7,<1.6.0a0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/binutils_impl_linux-64-2.45.1-default_hfdba357_102.conda
+  hash:
+    md5: 8165352fdce2d2025bf884dc0ee85700
+    sha256: 0a7d405064f53b9d91d92515f1460f7906ee5e8523f3cd8973430e81219f4917
+  category: main
+  optional: false
+- name: binutils_linux-64
+  version: 2.45.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    binutils_impl_linux-64: 2.45.1
+  url: https://conda.anaconda.org/conda-forge/linux-64/binutils_linux-64-2.45.1-default_h4852527_102.conda
+  hash:
+    md5: 2a307a17309d358c9b42afdd3199ddcc
+    sha256: 78a58d523d072b7f8e591b8f8572822e044b31764ed7e8d170392e7bc6d58339
+  category: main
+  optional: false
 - name: blosc
   version: 1.21.6
   manager: conda
@@ -755,6 +783,362 @@ package:
   hash:
     md5: f54c1ffb8ecedb85a8b7fcde3a187212
     sha256: d3e9bbd7340199527f28bbacf947702368f31de60c433a16446767d3c6aaf6fe
+  category: main
+  optional: false
+- name: cuda-cccl_linux-64
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-cccl_linux-64-13.2.75-ha770c72_0.conda
+  hash:
+    md5: 2a66581b5e2fba97243e6a7b3ea70061
+    sha256: afff92110ab09005b43047128d8c56b49ca96ef6425b2de8121ddf8e5d9c52fd
+  category: main
+  optional: false
+- name: cuda-crt-dev_linux-64
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-crt-dev_linux-64-13.2.78-ha770c72_0.conda
+  hash:
+    md5: 61799994af56d5ab31096a11d62d6be8
+    sha256: 5db93738a2523c418de442427ea0b5fb877fcb517e0d170b1428bdd298bcddfd
+  category: main
+  optional: false
+- name: cuda-crt-tools
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-crt-tools-13.2.78-ha770c72_0.conda
+  hash:
+    md5: 2edadf855598e2f3e3e323d900fd27ab
+    sha256: db0517510b960a14a0efd50881ea43954b27abdbbc782a60174872585ee4d207
+  category: main
+  optional: false
+- name: cuda-cudart
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-cudart_linux-64: 13.2.75
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-cudart-13.2.75-hecca717_0.conda
+  hash:
+    md5: 9b7dcd83f8a965efcf7377dc54203619
+    sha256: 633bc9ba458a12a20a42776bf3fa25cecfddc65a22e4ed207fe09b9adcd9de58
+  category: main
+  optional: false
+- name: cuda-cudart-dev
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-cudart: 13.2.75
+    cuda-cudart-dev_linux-64: 13.2.75
+    cuda-cudart-static: 13.2.75
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-cudart-dev-13.2.75-hecca717_0.conda
+  hash:
+    md5: 145b05176a16bf8ffa64defccde19162
+    sha256: c11c338b24c37ae05d39ae752a661b199c6530f2f189be1cc718b23485cd8626
+  category: main
+  optional: false
+- name: cuda-cudart-dev_linux-64
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-cccl_linux-64: ''
+    cuda-cudart-static_linux-64: ''
+    cuda-cudart_linux-64: ''
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-cudart-dev_linux-64-13.2.75-h376f20c_0.conda
+  hash:
+    md5: 0104d270d83f6c3f6b4f8f761da37bf4
+    sha256: feb6d90170dbdbbc873d065f17c55845b03e1bd132d5727ba16c9dc5048c3a98
+  category: main
+  optional: false
+- name: cuda-cudart-static
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-cudart-static_linux-64: 13.2.75
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-cudart-static-13.2.75-hecca717_0.conda
+  hash:
+    md5: 42208a65f539b7dca4c900681649f599
+    sha256: bb55bbd1d5961953889abef8c1c2ec011eff0c4d3dd92f46d06fd4176285f430
+  category: main
+  optional: false
+- name: cuda-cudart-static_linux-64
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-cudart-static_linux-64-13.2.75-h376f20c_0.conda
+  hash:
+    md5: 6e8700fbcdf3a916d4494db9811d955a
+    sha256: f4e8c80fe897a426bb6a413b685d7e16eaf52cdbbcf3fa73cf24c994da82b0ef
+  category: main
+  optional: false
+- name: cuda-cudart_linux-64
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-cudart_linux-64-13.2.75-h376f20c_0.conda
+  hash:
+    md5: ff98f2b9b87eb8b3a4b36745d3d5b93e
+    sha256: cd03c67b2005e2e74ff278f6f8b17ca7d6f18cf43fb00775833669508d301a83
+  category: main
+  optional: false
+- name: cuda-driver-dev_linux-64
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-driver-dev_linux-64-13.2.75-h376f20c_0.conda
+  hash:
+    md5: a3fcf07a7dba934172ad464931773730
+    sha256: adf85566baf27c8b05785807d6a21b3bb60264cd1b198a83cef4aac84dd74021
+  category: main
+  optional: false
+- name: cuda-libraries
+  version: 13.2.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-cudart: 13.2.75.*
+    cuda-nvrtc: 13.2.78.*
+    cuda-opencl: 13.2.75.*
+    libcublas: 13.4.0.1.*
+    libcufft: 12.2.0.46.*
+    libcufile: 1.17.1.22.*
+    libcuobjclient: 1.1.1.22.*
+    libcurand: 10.4.2.55.*
+    libcusolver: 12.2.0.1.*
+    libcusparse: 12.7.10.1.*
+    libnpp: 13.1.0.48.*
+    libnvfatbin: 13.2.78.*
+    libnvjitlink: 13.2.78.*
+    libnvjpeg: 13.1.0.48.*
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-libraries-13.2.1-ha770c72_0.conda
+  hash:
+    md5: 7d3b68143cf394e8c8ccf4f9295952ab
+    sha256: 4e74993a81c26193e46c4f6be0cd95a75b526e37388fe53c091f1d2a88e54dd8
+  category: main
+  optional: false
+- name: cuda-nvcc
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-nvcc_linux-64: 13.2.78.*
+    gcc_linux-64: ''
+    gxx_linux-64: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvcc-13.2.78-hcdd1206_0.conda
+  hash:
+    md5: 08c7ce98e7422c620d653b8dd0b860bc
+    sha256: cccfb670f1df05d877e5bda117f7904037980d43f54cc0466efb27130b02e660
+  category: main
+  optional: false
+- name: cuda-nvcc-dev_linux-64
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-crt-dev_linux-64: 13.2.78
+    cuda-nvvm-dev_linux-64: 13.2.78
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=6'
+    libnvptxcompiler-dev_linux-64: 13.2.78
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-nvcc-dev_linux-64-13.2.78-he91c749_0.conda
+  hash:
+    md5: 74d5f18e2461a1b54c438af4b88986d4
+    sha256: 2ec469887c35e379ae0c14f45a96579a8509b0e61977416e9b1cdcca31fea006
+  category: main
+  optional: false
+- name: cuda-nvcc-impl
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-cudart: '>=13.2.75,<14.0a0'
+    cuda-cudart-dev: ''
+    cuda-nvcc-dev_linux-64: 13.2.78
+    cuda-nvcc-tools: 13.2.78
+    cuda-nvvm-impl: 13.2.78
+    cuda-version: '>=13.2,<13.3.0a0'
+    libnvptxcompiler-dev: 13.2.78
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvcc-impl-13.2.78-h85509e4_0.conda
+  hash:
+    md5: 4b65d9b967d7814742a7f62052872a7c
+    sha256: b72a26f00d79592e018228b460539d98c8d1fceefcd68ac4d38dbd7b352b9c48
+  category: main
+  optional: false
+- name: cuda-nvcc-tools
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-crt-tools: 13.2.78
+    cuda-nvvm-tools: 13.2.78
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=12'
+    libstdcxx: '>=12'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvcc-tools-13.2.78-he02047a_0.conda
+  hash:
+    md5: 542607fe8f59653d0f22363c6fe9a689
+    sha256: 31d97d74c7c81c22efe5b6d223df6ce6bb2a9c33ce50a6746191002b56a4deb2
+  category: main
+  optional: false
+- name: cuda-nvcc_linux-64
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-cudart-dev_linux-64: 13.2.*
+    cuda-driver-dev_linux-64: 13.2.*
+    cuda-nvcc-dev_linux-64: 13.2.78.*
+    cuda-nvcc-impl: 13.2.78.*
+    cuda-nvcc-tools: 13.2.78.*
+    sysroot_linux-64: '>=2.17,<3.0a0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvcc_linux-64-13.2.78-hb2fc203_0.conda
+  hash:
+    md5: 230423a2b6214c07c6d415976a96bc94
+    sha256: 03239914b7f53a2aed3fcc9f6b8b0c7b06b6b85341636d191b62aa439a43a091
+  category: main
+  optional: false
+- name: cuda-nvrtc
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvrtc-13.2.78-hecca717_0.conda
+  hash:
+    md5: 66623d882c42506fa3f1780b90841400
+    sha256: 73fbc9d15c062c3ea60891e8183002f6b055fa6638402d17581677af0aaa20d8
+  category: main
+  optional: false
+- name: cuda-nvvm-dev_linux-64
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-nvvm-dev_linux-64-13.2.78-ha770c72_0.conda
+  hash:
+    md5: 531411c4a10ef8d4d045695edf86e4da
+    sha256: 13ce27aa4f3427eae9a6cc7402f08d8515604a56829825fcf9c0de1a1034309e
+  category: main
+  optional: false
+- name: cuda-nvvm-impl
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=12'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvvm-impl-13.2.78-h4bc722e_0.conda
+  hash:
+    md5: 5e1021b4c73e795deabbf35ed1317dcb
+    sha256: 944d132f61f240131abff67646da4040ae585a1f43c6b38fabebb6cc075a7c16
+  category: main
+  optional: false
+- name: cuda-nvvm-tools
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=12'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-nvvm-tools-13.2.78-h4bc722e_0.conda
+  hash:
+    md5: 1b3e427ba98cd5d2a4df1c0e9f573023
+    sha256: 57636a84b88434c4aca3a3585ee9bb9eb7da6d4a53c3ad034b33f03bd8838f08
+  category: main
+  optional: false
+- name: cuda-opencl
+  version: 13.2.75
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+    ocl-icd: '>=2.3.3,<3.0a0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cuda-opencl-13.2.75-hecca717_0.conda
+  hash:
+    md5: 437a0eee696e1e9ce520991562f16baa
+    sha256: bb6b660bf45b3ef19afde4b061fe01b674d84f49e388601c78932710f366a3d9
+  category: main
+  optional: false
+- name: cuda-runtime
+  version: 13.2.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __linux: ''
+    cuda-libraries: 13.2.1.*
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-runtime-13.2.1-ha804496_0.conda
+  hash:
+    md5: 120466f0552fd07470d68f13d4d786c6
+    sha256: b0e0051d31c44093e04f78f6c9f6d62fb78c282ce906d308ac6b62bed2f6500f
+  category: main
+  optional: false
+- name: cuda-version
+  version: '13.2'
+  manager: conda
+  platform: linux-64
+  dependencies: {}
+  url: https://conda.anaconda.org/conda-forge/noarch/cuda-version-13.2-he2cc418_3.conda
+  hash:
+    md5: 45676e3dd76b30ec613f1f822d450eff
+    sha256: 64aebe8ccb3a2c3ff446d3c0c0e88ef4fdb069a5732c03539bf3a37243c4c679
+  category: main
+  optional: false
+- name: cudnn
+  version: 9.21.1.3
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13,<14.0a0'
+    libcudnn-dev: 9.21.1.3
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/cudnn-9.21.1.3-h886f0b6_0.conda
+  hash:
+    md5: 0b85ff4da73bccade3709c06fdcfcd4e
+    sha256: 2d2457d8fde5b27f0efb37547d292a981fd10b3a90a48435c6d5062dfa62489c
   category: main
   optional: false
 - name: cycler
@@ -1165,6 +1549,39 @@ package:
     sha256: 587a0e2606026716760af58e5d7c15ea02a848bd076a324946798be29d0229db
   category: main
   optional: false
+- name: gcc_impl_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    binutils_impl_linux-64: '>=2.45'
+    libgcc: '>=15.2.0'
+    libgcc-devel_linux-64: 15.2.0
+    libgomp: '>=15.2.0'
+    libsanitizer: 15.2.0
+    libstdcxx: '>=15.2.0'
+    libstdcxx-devel_linux-64: 15.2.0
+    sysroot_linux-64: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/gcc_impl_linux-64-15.2.0-he420e7e_18.conda
+  hash:
+    md5: cf56b6d74f580b91fd527e10d9a2e324
+    sha256: a088cfd3ae6fa83815faa8703bc9d21cc915f17bd1b51aac9c16ddf678da21e4
+  category: main
+  optional: false
+- name: gcc_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    binutils_linux-64: ''
+    gcc_impl_linux-64: 15.2.0.*
+    sysroot_linux-64: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/gcc_linux-64-15.2.0-h7be306e_24.conda
+  hash:
+    md5: 81f96ca8673107e2da4a6b9e3807cf74
+    sha256: 7e1a77123819f9e6c15439df9a987c66235c53e4c6d12a9ab3cea883258214df
+  category: main
+  optional: false
 - name: gflags
   version: 2.2.2
   manager: conda
@@ -1205,6 +1622,36 @@ package:
   hash:
     md5: 2cd94587f3a401ae05e03a6caf09539d
     sha256: 25ba37da5c39697a77fce2c9a15e48cf0a84f1464ad2aafbe53d8357a9f6cc8c
+  category: main
+  optional: false
+- name: gxx_impl_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    gcc_impl_linux-64: 15.2.0
+    libstdcxx-devel_linux-64: 15.2.0
+    sysroot_linux-64: ''
+    tzdata: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/gxx_impl_linux-64-15.2.0-hda75c37_18.conda
+  hash:
+    md5: e39123ab71f2e4cf989aa6aa5fafdaaf
+    sha256: 48946f1f43d699b68123fb39329ef5acf3d9cbf8f96bdb8fb14b6197f5402825
+  category: main
+  optional: false
+- name: gxx_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    binutils_linux-64: ''
+    gcc_linux-64: ==15.2.0
+    gxx_impl_linux-64: 15.2.0.*
+    sysroot_linux-64: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/gxx_linux-64-15.2.0-he30e93d_24.conda
+  hash:
+    md5: 0787df5104bd63d2186dd3902244e7c3
+    sha256: 9b40af502e2471ceff9a04a860165d8a6fac659c07dc115ed8357e1a77e2cbe7
   category: main
   optional: false
 - name: gymnasium
@@ -1520,6 +1967,17 @@ package:
     sha256: 1ba7ff13d58b9ff56b8cca144c52db12260ac20fa0c664697fb0d576989696d6
   category: main
   optional: false
+- name: kernel-headers_linux-64
+  version: 4.18.0
+  manager: conda
+  platform: linux-64
+  dependencies: {}
+  url: https://conda.anaconda.org/conda-forge/noarch/kernel-headers_linux-64-4.18.0-he073ed8_9.conda
+  hash:
+    md5: 86d9cba083cd041bfbf242a01a7a1999
+    sha256: 41557eeadf641de6aeae49486cef30d02a6912d8da98585d687894afd65b356a
+  category: main
+  optional: false
 - name: keyutils
   version: 1.6.3
   manager: conda
@@ -1796,6 +2254,19 @@ package:
     sha256: a0c15c79997820bbd3fbc8ecf146f4fe0eca36cc60b62b63ac6cf78857f1dd0d
   category: main
   optional: false
+- name: libcap
+  version: '2.77'
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcap-2.77-hd0affe5_1.conda
+  hash:
+    md5: 499cd8e2d4358986dbe3b30e8fe1bf6a
+    sha256: 37c41b1024d0c75da76822e3c079aabaf121618a32fe05e53a897b35a88008fc
+  category: main
+  optional: false
 - name: libcblas
   version: 3.11.0
   manager: conda
@@ -1851,6 +2322,104 @@ package:
     sha256: fd1d153962764433fe6233f34a72cdeed5dcf8a883a85769e8295ce940b5b0c5
   category: main
   optional: false
+- name: libcublas
+  version: 13.4.0.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-nvrtc: ''
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcublas-13.4.0.1-h676940d_0.conda
+  hash:
+    md5: 6d0f693d22af11a5a8cee046b8bd8f9d
+    sha256: ccd6e80aca0711140a1b6752745ddbc07a44f85cc7a9377d69fa1748c9de5d07
+  category: main
+  optional: false
+- name: libcudnn
+  version: 9.21.1.3
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-nvrtc: ''
+    cuda-version: '>=13,<14.0a0'
+    libcublas: ''
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+    libzlib: '>=1.3.2,<2.0a0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcudnn-9.21.1.3-ha4b6413_0.conda
+  hash:
+    md5: 68985f3a38a08e0ce9800bcc27d0e635
+    sha256: edb7c0a915120bd0caed0d7f653a5d51b1a091d8c14bd988190f5e9809ae2ad8
+  category: main
+  optional: false
+- name: libcudnn-dev
+  version: 9.21.1.3
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13,<14.0a0'
+    libcudnn: 9.21.1.3
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcudnn-dev-9.21.1.3-h7bcfba5_0.conda
+  hash:
+    md5: 7673963aa1d9cf4434908412443fca8a
+    sha256: a6bced506c3fad2b826db12c8bfd8ef73ca86cdfa430e541bacee0ce647a9c99
+  category: main
+  optional: false
+- name: libcufft
+  version: 12.2.0.46
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcufft-12.2.0.46-hecca717_0.conda
+  hash:
+    md5: c9fec7c7b8242778aa00620e5a6dabba
+    sha256: 0bb069a547dbef4ecf50bd60985c9d22296e15c8ecf2962e5ca1b53826acca79
+  category: main
+  optional: false
+- name: libcufile
+  version: 1.17.1.22
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+    rdma-core: '>=61.0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcufile-1.17.1.22-h85c024f_0.conda
+  hash:
+    md5: 056a67706108efd1f9c24682ba8d3685
+    sha256: a24ad0ca488aa3e237049cd5b5c6d7fe3d2d4330682ed329203064e332ea1d74
+  category: main
+  optional: false
+- name: libcuobjclient
+  version: 1.1.1.22
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libcufile: '>=1.17.1.22,<1.18.0a0'
+    libgcc: '>=14'
+    libnuma: '>=2.0.18,<3.0a0'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcuobjclient-1.1.1.22-hecca717_0.conda
+  hash:
+    md5: 43ecf9e8560fa474fb3af0cf524335d7
+    sha256: 051423d9598f01990bfed2999c6aaa324bb26da6eacf5b146750333b9e72b53d
+  category: main
+  optional: false
 - name: libcups
   version: 2.3.3
   manager: conda
@@ -1865,6 +2434,21 @@ package:
   hash:
     md5: d4a250da4737ee127fb1fa6452a9002e
     sha256: cb83980c57e311783ee831832eb2c20ecb41e7dee6e86e8b70b8cef0e43eab55
+  category: main
+  optional: false
+- name: libcurand
+  version: 10.4.2.55
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcurand-10.4.2.55-h676940d_0.conda
+  hash:
+    md5: 9c9f1b3e9d7b3eddb961c97cc081b526
+    sha256: 0a585c6980f4d8d2f34ed1771e48fb1751bafa565e033084d752ef8be90fbea7
   category: main
   optional: false
 - name: libcurl
@@ -1888,6 +2472,40 @@ package:
   hash:
     md5: 1344c38b2e50c74544eee64c19b37d33
     sha256: 8d8351fe10acdbaf2167f8d683b103ab2f9f844f707e814ecb071a29bbc38e9d
+  category: main
+  optional: false
+- name: libcusolver
+  version: 12.2.0.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libcublas: '>=13.4.0.1,<13.5.0a0'
+    libcusparse: '>=12.7.10.1,<12.8.0a0'
+    libgcc: '>=14'
+    libnvjitlink: '>=13.2.78,<14.0a0'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcusolver-12.2.0.1-h676940d_0.conda
+  hash:
+    md5: 1bfb220d6c24a234bb428421ddcc2c27
+    sha256: e97418a070990174b2a6ef5cc61e41df412d7575999f496fad365ba28c2029d6
+  category: main
+  optional: false
+- name: libcusparse
+  version: 12.7.10.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libnvjitlink: '>=13.2.78,<14.0a0'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libcusparse-12.7.10.1-hecca717_0.conda
+  hash:
+    md5: b522dacd5cbe09215143e7fe34c64074
+    sha256: 7d1000b452956e226158104eac81d6dbbda73b21e324fdfd51e2f36eb118bbd5
   category: main
   optional: false
 - name: libdeflate
@@ -2034,6 +2652,18 @@ package:
   hash:
     md5: 0aa00f03f9e39fb9876085dee11a85d4
     sha256: faf7d2017b4d718951e3a59d081eb09759152f93038479b768e3d612688f83f5
+  category: main
+  optional: false
+- name: libgcc-devel_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __unix: ''
+  url: https://conda.anaconda.org/conda-forge/noarch/libgcc-devel_linux-64-15.2.0-hcc6f6b0_118.conda
+  hash:
+    md5: 5d3a96d55f1be45fef88ee23155effd9
+    sha256: af69fc5852908d26e5b630b270982ac792506551dd6af1614bf0370dd5ab5746
   category: main
   optional: false
 - name: libgcc-ng
@@ -2342,6 +2972,34 @@ package:
     sha256: ef1003b384126778b7d8b88178cf420b2cf15b55e0d9a55ef07166d7a60d48cb
   category: main
   optional: false
+- name: libnl
+  version: 3.11.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=13'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnl-3.11.0-hb9d3cd8_0.conda
+  hash:
+    md5: db63358239cbe1ff86242406d440e44a
+    sha256: ba7c5d294e3d80f08ac5a39564217702d1a752e352e486210faff794ac5001b4
+  category: main
+  optional: false
+- name: libnpp
+  version: 13.1.0.48
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnpp-13.1.0.48-h676940d_0.conda
+  hash:
+    md5: 37f063628bd61b57ba8717cd5efa31c0
+    sha256: 28d709f51cba53ee563841612ddab26eb0e68bfe41418f209cb24fa5d502327e
+  category: main
+  optional: false
 - name: libnsl
   version: 2.0.1
   manager: conda
@@ -2366,6 +3024,89 @@ package:
   hash:
     md5: 7c7927b404672409d9917d49bff5f2d6
     sha256: 3b3f19ced060013c2dd99d9d46403be6d319d4601814c772a3472fe2955612b0
+  category: main
+  optional: false
+- name: libnuma
+  version: 2.0.18
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnuma-2.0.18-hb03c661_3.conda
+  hash:
+    md5: 672fad24c7fedff73c684c3e9e9848b3
+    sha256: 17d72848a6480f0b0708f2b2f64292b5fa0e0996ce56f26fc26e4aebb5a9ca81
+  category: main
+  optional: false
+- name: libnvfatbin
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnvfatbin-13.2.78-hecca717_0.conda
+  hash:
+    md5: 17761047bd7e9cc9bec3219cbf74b281
+    sha256: b4686d2278fcc0bbe0d0a9a03f0fd6c04692cf6f6f34c71d93c63a3b38ff0ecf
+  category: main
+  optional: false
+- name: libnvjitlink
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnvjitlink-13.2.78-hecca717_0.conda
+  hash:
+    md5: 641ddee63cb39856291275114ce15d13
+    sha256: 2ece599a2a1090eb70916061ab8b49670ee9b143e1f3b41efa0e32e0336a9465
+  category: main
+  optional: false
+- name: libnvjpeg
+  version: 13.1.0.48
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    cuda-version: '>=13.2,<13.3.0a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnvjpeg-13.1.0.48-hecca717_0.conda
+  hash:
+    md5: f2a5066dcc5555cb307c452dfa61e5dc
+    sha256: ea3685aaf03e37f12992946168480ba92211a818b3c488282026e113edc2f62e
+  category: main
+  optional: false
+- name: libnvptxcompiler-dev
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+    libnvptxcompiler-dev_linux-64: 13.2.78
+  url: https://conda.anaconda.org/conda-forge/linux-64/libnvptxcompiler-dev-13.2.78-ha770c72_0.conda
+  hash:
+    md5: 009ab9d572c1fe55cc952600acfcacf8
+    sha256: 1ee47ea506cfacd6c06fd09afb229c68d8925c5342a40fa40d54682ae6216021
+  category: main
+  optional: false
+- name: libnvptxcompiler-dev_linux-64
+  version: 13.2.78
+  manager: conda
+  platform: linux-64
+  dependencies:
+    cuda-version: '>=13.2,<13.3.0a0'
+  url: https://conda.anaconda.org/conda-forge/noarch/libnvptxcompiler-dev_linux-64-13.2.78-ha770c72_0.conda
+  hash:
+    md5: 8727a04a5bc3d451d45c907d03cda88f
+    sha256: 3d12a8f80dd25b889302cd091bdbb75135938c1365496a5d7be504fe2f347cf7
   category: main
   optional: false
 - name: libopenblas
@@ -2518,6 +3259,20 @@ package:
     sha256: 138fc85321a8c0731c1715688b38e2be4fb71db349c9ab25f685315095ae70ff
   category: main
   optional: false
+- name: libsanitizer
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=15.2.0'
+    libstdcxx: '>=15.2.0'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libsanitizer-15.2.0-h90f66d4_18.conda
+  hash:
+    md5: ff754fbe790d4e70cf38aea3668c3cb3
+    sha256: 0329e23d54a567c259adc962a62172eaa55e6ca33c105ef67b4f3cdb4ef70eaa
+  category: main
+  optional: false
 - name: libsqlite
   version: 3.53.0
   manager: conda
@@ -2560,6 +3315,18 @@ package:
     sha256: 78668020064fdaa27e9ab65cd2997e2c837b564ab26ce3bf0e58a2ce1a525c6e
   category: main
   optional: false
+- name: libstdcxx-devel_linux-64
+  version: 15.2.0
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __unix: ''
+  url: https://conda.anaconda.org/conda-forge/noarch/libstdcxx-devel_linux-64-15.2.0-hd446a21_118.conda
+  hash:
+    md5: a50630d1810916fc252b2152f1dc9d6d
+    sha256: 138ee40ba770abf4556ee9981879da9e33299f406a450831b48c1c397d7d0833
+  category: main
+  optional: false
 - name: libstdcxx-ng
   version: 15.2.0
   manager: conda
@@ -2570,6 +3337,20 @@ package:
   hash:
     md5: 6235adb93d064ecdf3d44faee6f468de
     sha256: 3c902ffd673cb3c6ddde624cdb80f870b6c835f8bf28384b0016e7d444dd0145
+  category: main
+  optional: false
+- name: libsystemd0
+  version: '257.13'
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libcap: '>=2.77,<2.78.0a0'
+    libgcc: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libsystemd0-257.13-hd0affe5_0.conda
+  hash:
+    md5: 8ee3cb7f64be0e8c4787f3a4dbe024e6
+    sha256: c5008b602cb5c819f7b52d418b3ed17e1818cbbf6705b189e7ab36bb70cce3d8
   category: main
   optional: false
 - name: libthrift
@@ -2608,6 +3389,20 @@ package:
   hash:
     md5: cd5a90476766d53e901500df9215e927
     sha256: e5f8c38625aa6d567809733ae04bb71c161a42e44a9fa8227abe61fa5c60ebe0
+  category: main
+  optional: false
+- name: libudev1
+  version: '257.13'
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libcap: '>=2.77,<2.78.0a0'
+    libgcc: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/libudev1-257.13-hd0affe5_0.conda
+  hash:
+    md5: 2c2270f93d6f9073cbf72d821dfc7d72
+    sha256: 1a1e367c04d66030aa93b4d33905f7f6fbb59cfc292e816fe3e9c1e8b3f4d1e2
   category: main
   optional: false
 - name: libunistring
@@ -3092,6 +3887,20 @@ package:
     sha256: 1aab7ba963affa572956b1bd8d239df52a9c7bc799c560f98bc658ab70224e10
   category: main
   optional: false
+- name: ocl-icd
+  version: 2.3.3
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=13'
+    opencl-headers: '>=2024.10.24'
+  url: https://conda.anaconda.org/conda-forge/linux-64/ocl-icd-2.3.3-hb9d3cd8_0.conda
+  hash:
+    md5: 56f8947aa9d5cf37b0b3d43b83f34192
+    sha256: 2254dae821b286fb57c61895f2b40e3571a070910fdab79a948ff703e1ea807b
+  category: main
+  optional: false
 - name: onednn
   version: 3.11.1
   manager: conda
@@ -3116,6 +3925,20 @@ package:
   hash:
     md5: 03d6d4b1ca5fff17bda0e937e7810c2c
     sha256: 16c52b70ea1645408de246ae09e51b36a9a15343930ba681cf3017e8f2110da5
+  category: main
+  optional: false
+- name: opencl-headers
+  version: 2025.06.13
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=14'
+    libstdcxx: '>=14'
+  url: https://conda.anaconda.org/conda-forge/linux-64/opencl-headers-2025.06.13-hecca717_0.conda
+  hash:
+    md5: c930c8052d780caa41216af7de472226
+    sha256: 8de2f0cd8a659b01abf86e7fbb8cea4f28ada62fd288429a2bbc040db1b98dd0
   category: main
   optional: false
 - name: openjpeg
@@ -3757,6 +4580,23 @@ package:
     sha256: cf550bbc8e5ebedb6dba9ccaead3e07bd1cb86b183644a4c853e06e4b3ad5ac7
   category: main
   optional: false
+- name: rdma-core
+  version: '61.0'
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libgcc: '>=14'
+    libnl: '>=3.11.0,<4.0a0'
+    libstdcxx: '>=14'
+    libsystemd0: '>=257.10'
+    libudev1: '>=257.10'
+  url: https://conda.anaconda.org/conda-forge/linux-64/rdma-core-61.0-h192683f_0.conda
+  hash:
+    md5: d487d93d170e332ab39803e05912a762
+    sha256: 8e0b7962cf8bec9a016cd91a6c6dc1f9ebc8e7e316b1d572f7b9047d0de54717
+  category: main
+  optional: false
 - name: re2
   version: 2025.11.05
   manager: conda
@@ -3970,6 +4810,20 @@ package:
   hash:
     md5: 2a2170a3e5c9a354d09e4be718c43235
     sha256: 4a1d2005153b9454fc21c9bad1b539df189905be49e851ec62a6212c2e045381
+  category: main
+  optional: false
+- name: sysroot_linux-64
+  version: '2.28'
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.28'
+    kernel-headers_linux-64: 4.18.0
+    tzdata: ''
+  url: https://conda.anaconda.org/conda-forge/noarch/sysroot_linux-64-2.28-h4ee821c_9.conda
+  hash:
+    md5: 13dc3adbc692664cd3beabd216434749
+    sha256: c47299fe37aebb0fcf674b3be588e67e4afb86225be4b0d452c7eb75c086b851
   category: main
   optional: false
 - name: tensorflow-probability

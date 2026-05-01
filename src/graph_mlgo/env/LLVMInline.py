@@ -35,7 +35,6 @@ class LLVMInlineEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             random.seed(seed)
-            np.random.seed(seed)
 
         while True:
             idx = random.randint(0, len(self.dataset) - 1)
