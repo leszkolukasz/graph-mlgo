@@ -9,6 +9,9 @@ from loguru import logger
 from datasets import load_dataset, Dataset, DatasetDict
 import llvmlite.binding as llvm
 
+from graph_mlgo.graph.graph import Graph
+from graph_mlgo.constants import MAX_IR_LEN, MAX_NODES, MAX_EDGES
+
 CPP_CRASH_LOG = "logs/cpp_crashes.log"
 LOG_FILE = "logs/dataset_preparation.log"
 INDICES_FILE = "logs/valid_indices.txt"
@@ -33,7 +36,6 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
             queue.put(False)
             return
 
-        from graph_mlgo.graph.graph import Graph
 
         graph = Graph(ir_bitcode)
         graph.module.verify()
@@ -69,7 +71,7 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
     except Exception:
         queue.put(False)
 
-def is_valid(ir_text: str, ir_bitcode: bytes, max_nodes: int = 200, max_edges: int = 500, max_ir_len: int = 15000) -> bool:
+def is_valid(ir_text: str, ir_bitcode: bytes, max_nodes: int = MAX_NODES, max_edges: int = MAX_EDGES, max_ir_len: int = MAX_IR_LEN) -> bool:
     ctx = mp.get_context("spawn")
     queue = ctx.Queue()
     

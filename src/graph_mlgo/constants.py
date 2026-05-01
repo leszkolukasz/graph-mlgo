@@ -1,0 +1,3 @@
+MAX_IR_LEN = 15000 # 15k lines
+MAX_NODES = 200
+MAX_EDGES = 500
