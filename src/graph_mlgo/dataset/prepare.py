@@ -2,6 +2,7 @@ import os
 import sys
 import argparse
 import multiprocessing as mp
+import concurrent.futures
 
 from tqdm import tqdm
 from loguru import logger
@@ -20,7 +21,7 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
 
     logger.remove()
     logger.add(
-    LOG_FILE, 
+        LOG_FILE, 
         rotation="50 MB",
         enqueue=True,
         level="DEBUG"
@@ -29,7 +30,6 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
     try:
         ir_text_lines = ir_text.splitlines()
         if len(ir_text_lines) > max_ir_len:
-            logger.warning(f"IR length {len(ir_text_lines)} exceeds max {max_ir_len}. Skipping sample.")
             queue.put(False)
             return
 
@@ -43,26 +43,30 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
 
         if num_edges == 0 or num_edges > max_edges:
             queue.put(False)
-            logger.warning(f"Number of edges {num_edges} is invalid (0 or exceeds max {max_edges}). Skipping sample.")
             return
             
         if num_nodes == 0 or num_nodes > max_nodes:
             queue.put(False)
-            logger.warning(f"Number of nodes {num_nodes} is invalid (0 or exceeds max {max_nodes}). Skipping sample.")
             return
 
-        logger.debug(f"IR has {num_nodes} nodes and {num_edges} edges.")
+        hard_limit = int(max_ir_len * 10)
 
         edge_iterator = graph.get_inline_order()
         for edge in edge_iterator:
             graph.inline(edge)
 
+            current_ir = str(graph.module)
+            current_len = len(current_ir.splitlines())
+            
+            if current_len > hard_limit:
+                queue.put(False)
+                return
+
         _ = graph.calc_native_size()
 
         queue.put(True)
         
-    except Exception as e:
-        logger.exception(f"Validation worker encountered an error: {e}")
+    except Exception:
         queue.put(False)
 
 def is_valid(ir_text: str, ir_bitcode: bytes, max_nodes: int = 200, max_edges: int = 500, max_ir_len: int = 15000) -> bool:
@@ -74,13 +78,26 @@ def is_valid(ir_text: str, ir_bitcode: bytes, max_nodes: int = 200, max_edges: i
     p.join()
     
     if p.exitcode != 0:
-        # logger.warning(f"Worker crashed with exit code {p.exitcode}. Skipping sample.")
         return False
         
     if not queue.empty():
         return queue.get()
         
     return False
+
+def process_sample_task(sample, apply_filter):
+    ir_bitcode = sample["content"]
+    try:
+        ir_text = str(llvm.parse_bitcode(ir_bitcode))
+    except Exception:
+        return None, None
+        
+    if apply_filter:
+        if not is_valid(ir_text, ir_bitcode):
+            return None, None
+            
+    return sample, ir_text
+
 
 def ir_generator(target_gb: float, split_name: str, skip_rows: int, parse_bitcode: bool, apply_filter: bool = True):
     ds = load_dataset("llvm-ml/ComPile", split="train", streaming=True)
@@ -91,30 +108,47 @@ def ir_generator(target_gb: float, split_name: str, skip_rows: int, parse_bitcod
     target_bytes = target_gb * 1024 * 1024 * 1024
     current_bytes = 0
 
+    max_workers = max(1, mp.cpu_count() - 1)
+
     with tqdm(total=target_gb, desc=f"Processing {split_name}", unit="GB") as bar:
-        for sample in ds:
-            ir_bitcode = sample["content"]
-            ir_text = str(llvm.parse_bitcode(ir_bitcode))
-
-            if apply_filter:
-                if not is_valid(ir_text, ir_bitcode):
-                    continue
-
-            if parse_bitcode:
-                output = ir_text
-            else:
-                output = ir_bitcode
-
-            sample["content"] = output
-            size_bytes = len(ir_text)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = set()
+            ds_iter = iter(ds)
             
-            yield sample
+            def fill_futures():
+                while len(futures) < max_workers * 2:
+                    try:
+                        sample = next(ds_iter)
+                        fut = executor.submit(process_sample_task, sample, apply_filter)
+                        futures.add(fut)
+                    except StopIteration:
+                        break
+                        
+            fill_futures()
             
-            bar.update(size_bytes / (1024**3))
-
-            current_bytes += size_bytes            
-            if current_bytes >= target_bytes:
-                break
+            while futures:
+                done, futures = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                
+                for fut in done:
+                    try:
+                        result_sample, ir_text = fut.result()
+                    except Exception:
+                        result_sample = None
+                        
+                    if result_sample is not None:
+                        output = ir_text if parse_bitcode else result_sample["content"]
+                        result_sample["content"] = output
+                        size_bytes = len(ir_text)
+                        
+                        yield result_sample
+                        
+                        bar.update(size_bytes / (1024**3))
+                        current_bytes += size_bytes
+                        
+                        if current_bytes >= target_bytes:
+                            return
+                
+                fill_futures()
 
 
 def prepare_dataset(size_GB: float, output_path: str = "data", parse_bitcode: bool = False, apply_filter: bool = True) -> None:
@@ -167,4 +201,5 @@ if __name__ == "__main__":
 
     os.remove(LOG_FILE) if os.path.exists(LOG_FILE) else None
     os.remove(CPP_CRASH_LOG) if os.path.exists(CPP_CRASH_LOG) else None
+    
     prepare_dataset(size_GB=args.size_GB, output_path=args.output_path, parse_bitcode=args.parse_bitcode, apply_filter=args.filter)

@@ -107,7 +107,7 @@ def sample_run():
 
     env = LLVMInlineEnv(dataset=dataset.train, embedder=embedder)
 
-    for _ in range(100):
+    for _ in range(1000):
         obs, info = env.reset()
         done = False
         total_reward = 0
