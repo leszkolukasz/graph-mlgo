@@ -15,7 +15,7 @@ class ComPileDataset(DatasetDict):
         return self["test"]
 
 if __name__ == "__main__":
-    dataset = ComPileDataset("data/ComPile-1GB-parsed")
+    dataset = ComPileDataset("data/ComPile-1GB")
     
     with open("sample_ir.txt", "w") as f:
         for i, sample in enumerate(dataset.train):

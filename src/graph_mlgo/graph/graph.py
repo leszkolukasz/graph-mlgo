@@ -3,13 +3,10 @@ from llvmlite import binding as llvm
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
-import ctypes
 
 from graph_mlgo.ir import compile_module
 from graph_mlgo.graph.embedding import Embedder
 from graph_mlgo import cpp_bindings # ty: ignore
-
-FEATURE_DIM = 3
 
 type Edge = tuple[str, str]
 
@@ -19,11 +16,11 @@ class Node:
     def __init__(self, name: str):
         self.name: str = name
         self.neighbours: set[str] = set()
-        self.features: np.ndarray = np.zeros(FEATURE_DIM, dtype=np.float32)
+        self.features: np.ndarray = np.zeros(Node.get_features_dim(), dtype=np.float32)
 
     @staticmethod
     def get_features_dim() -> int:
-        return FEATURE_DIM
+        return 3
 
 
 class Graph:
@@ -36,6 +33,7 @@ class Graph:
         self.edges = dict()
 
         self.module = llvm.parse_bitcode(bitcode)
+        self.module.verify()
 
         self._build_from_bitcode()
         self._scc()
@@ -63,8 +61,20 @@ class Graph:
     def inline(self, edge: Edge) -> None:
         caller, callee = edge
 
-        module_ptr = ctypes.cast(self.module._ptr, ctypes.c_void_p).value
-        cpp_bindings.inline_edges(module_ptr, caller, callee)
+        # module_ptr = ctypes.cast(self.module._ptr, ctypes.c_void_p).value
+        # success = cpp_bindings.inline_edges(module_ptr, caller, callee)
+
+        new_ir_text, success = cpp_bindings.inline_edges_safe(
+            str(self.module), 
+            caller, 
+            callee
+        )
+        
+        if success == 0:
+            raise RuntimeError(f"Inlining failed for edge {edge}")
+
+        self.module = llvm.parse_assembly(new_ir_text)
+        self.module.verify()
         
         self.edges.pop(edge, None)
         
@@ -201,7 +211,6 @@ class Graph:
             return None
         
         operands = list(instr.operands)
-        print(operands)
         if not operands:
             return None
         
@@ -209,6 +218,22 @@ class Graph:
         callee_name = callee_val.name
 
         assert isinstance(callee_name, str), f"Expected callee name as string, got {type(callee_name)}"
+
+        if callee_name.startswith("llvm."):
+            return None
+
+        # Inline only internal functions
+        try:
+            func = self.module.get_function(callee_name)
+        except NameError:
+            return None
+
+        if func.is_declaration:
+            return None
+
+        # Removes variadic functions
+        if "..." in str(func.type):
+            return None
 
         return callee_name
 
