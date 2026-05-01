@@ -102,8 +102,11 @@ def sample_run():
     from graph_mlgo.dataset import ComPileDataset
     from graph_mlgo.graph.embedding import TrivialEmbedder
 
-    dataset = ComPileDataset("./data/ComPile-0.01GB")
+    dataset = ComPileDataset("./data/ComPile-1.0GB")
     embedder = TrivialEmbedder()
+
+    print(len(dataset.train))
+    print(len(dataset.test))
 
     env = LLVMInlineEnv(dataset=dataset.train, embedder=embedder)
 

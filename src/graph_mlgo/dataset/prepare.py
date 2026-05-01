@@ -11,9 +11,9 @@ import llvmlite.binding as llvm
 
 CPP_CRASH_LOG = "logs/cpp_crashes.log"
 LOG_FILE = "logs/dataset_preparation.log"
+INDICES_FILE = "logs/valid_indices.txt"
 
 def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edges: int, max_ir_len: int, queue: mp.Queue):
-    os.makedirs("logs", exist_ok=True)
     crash_log_fd = os.open(CPP_CRASH_LOG, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o666)
     
     os.dup2(crash_log_fd, sys.stdout.fileno())
@@ -49,7 +49,7 @@ def _validation_worker(ir_text: str, ir_bitcode: bytes, max_nodes: int, max_edge
             queue.put(False)
             return
 
-        hard_limit = int(max_ir_len * 10)
+        hard_limit = int(max_ir_len * 4)
 
         edge_iterator = graph.get_inline_order()
         for edge in edge_iterator:
@@ -85,83 +85,153 @@ def is_valid(ir_text: str, ir_bitcode: bytes, max_nodes: int = 200, max_edges: i
         
     return False
 
-def process_sample_task(sample, apply_filter):
+def process_sample_task(idx, sample, apply_filter):
     ir_bitcode = sample["content"]
     try:
         ir_text = str(llvm.parse_bitcode(ir_bitcode))
     except Exception:
-        return None, None
+        return idx, None, None
         
     if apply_filter:
         if not is_valid(ir_text, ir_bitcode):
-            return None, None
+            return idx, None, None
             
-    return sample, ir_text
+    return idx, sample, ir_text
 
-
-def ir_generator(target_gb: float, split_name: str, skip_rows: int, parse_bitcode: bool, apply_filter: bool = True):
-    ds = load_dataset("llvm-ml/ComPile", split="train", streaming=True)
-    
-    if skip_rows > 0:
-        ds = ds.skip(skip_rows)
-
-    target_bytes = target_gb * 1024 * 1024 * 1024
+def find_valid_indices(total_gb: float, apply_filter: bool):
+    valid_indices = []
+    last_processed_idx = -1
     current_bytes = 0
+    target_bytes = total_gb * 1024 * 1024 * 1024
+
+    num_valid_samples = 0
+
+    if os.path.exists(INDICES_FILE):
+        with open(INDICES_FILE, "r") as f:
+            for line in f:
+                parts = line.strip().split(",")
+                if len(parts) == 3:
+                    idx, is_valid_flag, size = int(parts[0]), int(parts[1]), int(parts[2])
+                    last_processed_idx = max(last_processed_idx, idx)
+                    if is_valid_flag:
+                        valid_indices.append(idx)
+                        current_bytes += size
+                        num_valid_samples += 1
+
+    if current_bytes >= target_bytes:
+        return sorted(valid_indices)
+
+    ds = load_dataset("llvm-ml/ComPile", split="train", streaming=True)
+    ds_iter = enumerate(ds)
+    
+    for _ in range(last_processed_idx + 1):
+        try:
+            next(ds_iter)
+        except StopIteration:
+            break
 
     max_workers = max(1, mp.cpu_count() - 1)
-
-    with tqdm(total=target_gb, desc=f"Processing {split_name}", unit="GB") as bar:
+    
+    with tqdm(total=target_bytes, initial=current_bytes, desc="Filtering samples", unit="B", unit_scale=True) as bar:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = set()
-            ds_iter = iter(ds)
             
             def fill_futures():
                 while len(futures) < max_workers * 2:
                     try:
-                        sample = next(ds_iter)
-                        fut = executor.submit(process_sample_task, sample, apply_filter)
+                        idx, sample = next(ds_iter)
+                        fut = executor.submit(process_sample_task, idx, sample, apply_filter)
                         futures.add(fut)
                     except StopIteration:
                         break
                         
             fill_futures()
             
-            while futures:
-                done, futures = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
-                
-                for fut in done:
-                    try:
-                        result_sample, ir_text = fut.result()
-                    except Exception:
-                        result_sample = None
-                        
-                    if result_sample is not None:
-                        output = ir_text if parse_bitcode else result_sample["content"]
-                        result_sample["content"] = output
-                        size_bytes = len(ir_text)
-                        
-                        yield result_sample
-                        
-                        bar.update(size_bytes / (1024**3))
-                        current_bytes += size_bytes
-                        
-                        if current_bytes >= target_bytes:
-                            return
-                
-                fill_futures()
+            with open(INDICES_FILE, "a") as f:
+                while futures:
+                    done, futures = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                    
+                    for fut in done:
+                        try:
+                            idx, result_sample, ir_text = fut.result()
+                        except Exception:
+                            idx, result_sample, ir_text = -1, None, None
+                            
+                        if idx != -1:
+                            if result_sample is not None:
+                                size_bytes = len(ir_text) # ty: ignore
+                                f.write(f"{idx},1,{size_bytes}\n")
+                                f.flush()
+                                valid_indices.append(idx)
 
+                                current_bytes += size_bytes
+                                bar.update(size_bytes)
+
+                                num_valid_samples += 1
+                                bar.set_postfix({"valid_samples": num_valid_samples})
+                            else:
+                                f.write(f"{idx},0,0\n")
+                                f.flush()
+
+                            if current_bytes >= target_bytes:
+                                return sorted(valid_indices)
+                    
+                    fill_futures()
+                    
+    return sorted(valid_indices)
+
+def ir_generator(target_gb: float, start_idx: int, parse_bitcode: bool):
+    ds = load_dataset("llvm-ml/ComPile", split="train", streaming=True)
+    ds_iter = enumerate(ds)
+    
+    target_bytes = target_gb * 1024 * 1024 * 1024
+    current_bytes = 0
+    
+    valid_indices = []
+    with open(INDICES_FILE, "r") as f:
+        for line in f:
+            parts = line.strip().split(",")
+            if len(parts) == 3 and int(parts[1]) == 1:
+                valid_indices.append(int(parts[0]))
+                
+    valid_set = set(sorted(valid_indices)[start_idx:])
+    max_idx = max(valid_set)
+    
+    with tqdm(total=target_gb, desc="Generating Dataset", unit="GB") as bar:
+        for idx, sample in ds_iter:
+            if idx in valid_set:
+                ir_bitcode = sample["content"]
+                try:
+                    ir_text = str(llvm.parse_bitcode(ir_bitcode))
+                except Exception:
+                    continue
+                    
+                output = ir_text if parse_bitcode else ir_bitcode
+                sample["content"] = output
+                size_bytes = len(ir_text)
+                
+                yield sample
+                
+                bar.update(size_bytes / (1024**3))
+                current_bytes += size_bytes
+                
+                if current_bytes >= target_bytes or idx >= max_idx:
+                    break
 
 def prepare_dataset(size_GB: float, output_path: str = "data", parse_bitcode: bool = False, apply_filter: bool = True) -> None:
+    total_size_gb = size_GB + (size_GB / 10.0)
+    logger.info(f"Precomputing valid indices for {total_size_gb} GB...")
+    
+    _ = find_valid_indices(total_size_gb, apply_filter)
+
     logger.info(f"Generating train dataset ({size_GB} GB)...")
     
     train_dataset = Dataset.from_generator(
         ir_generator,
         gen_kwargs={
             "target_gb": float(size_GB),
-            "split_name": "train",
-            "skip_rows": 0,
-            "parse_bitcode": parse_bitcode,
-            "apply_filter": apply_filter
+            "start_idx": 0,
+            "parse_bitcode": parse_bitcode
         }
     )
     
@@ -174,10 +244,8 @@ def prepare_dataset(size_GB: float, output_path: str = "data", parse_bitcode: bo
         ir_generator,
         gen_kwargs={
             "target_gb": test_size_gb,
-            "split_name": "test",
-            "skip_rows": skip_rows,
-            "parse_bitcode": parse_bitcode,
-            "apply_filter": apply_filter
+            "start_idx": skip_rows,
+            "parse_bitcode": parse_bitcode
         }
     )
 
@@ -199,7 +267,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    os.remove(LOG_FILE) if os.path.exists(LOG_FILE) else None
-    os.remove(CPP_CRASH_LOG) if os.path.exists(CPP_CRASH_LOG) else None
-    
+    os.makedirs("logs", exist_ok=True)
+
     prepare_dataset(size_GB=args.size_GB, output_path=args.output_path, parse_bitcode=args.parse_bitcode, apply_filter=args.filter)

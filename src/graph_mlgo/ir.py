@@ -15,9 +15,9 @@ def compile_module(ir_text: str, enable_inlining: bool) -> tuple[int, str]:
         input_ll.write_text(ir_text)
 
         if enable_inlining:
-            pass_string = "module(function(sroa),cgscc(inline),function(instcombine,simplifycfg,adce))"
+            pass_string = "module(function(sroa),cgscc(inline),function(instcombine<no-verify-fixpoint>,simplifycfg,adce))"
         else:
-            pass_string = "function(sroa,instcombine,simplifycfg,adce)"
+            pass_string = "function(sroa,instcombine<no-verify-fixpoint>,simplifycfg,adce)"
         
         opt_cmd = [
             "opt",
