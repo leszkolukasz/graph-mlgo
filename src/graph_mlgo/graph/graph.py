@@ -25,8 +25,7 @@ class Graph:
         self._scc()
 
     def calc_native_size(self) -> int:
-            obj_bytes = compile_module(self.module, enable_inlining=False)
-            return len(obj_bytes)
+        return compile_module(str(self.module), enable_inlining=False)[0]
 
     def _build_from_bitcode(self) -> None:
         for caller_func in self.module.functions:

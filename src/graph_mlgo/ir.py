@@ -1,26 +1,62 @@
-import llvmlite.binding as llvm
-
+import subprocess
+import tempfile
+import os
+from pathlib import Path
 from loguru import logger
 
-def compile_module(module: llvm.ModuleRef, enable_inlining: bool) -> tuple[bytes, str]:
-        module_clone = module.clone()
+def compile_module(ir_text: str, enable_inlining: bool) -> tuple[int, str]:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        input_ll = tmp_path / "input.ll"
+        optimized_ll = tmp_path / "opt_after.ll"
+        object_file = tmp_path / "final.o"
+        text_bin = tmp_path / "text_only.bin"
 
-        target = llvm.Target.from_default_triple()
-        target_machine = target.create_target_machine(opt=2)
+        input_ll.write_text(ir_text)
+
+        if enable_inlining:
+            pass_string = "module(function(sroa),cgscc(inline),function(instcombine,simplifycfg,adce))"
+        else:
+            pass_string = "function(sroa,instcombine,simplifycfg,adce)"
         
-        pto = llvm.create_pipeline_tuning_options(speed_level=2, size_level=2)
+        opt_cmd = [
+            "opt",
+            "-S",
+            f"-passes={pass_string}",
+            str(input_ll),
+            "-o", str(optimized_ll)
+        ]
 
-        if not enable_inlining:
-            pto.inlining_threshold = 0
+        llc_cmd = [
+            "llc",
+            str(optimized_ll),
+            "-o", str(object_file),
+            "-filetype=obj",
+            "-O2"
+        ]
 
-        pass_builder = llvm.create_pass_builder(target_machine, pto)
+        objcopy_cmd = [
+            "llvm-objcopy",
+            "--only-section=.text",
+            "--output-target=binary",
+            str(object_file),
+            str(text_bin)
+        ]
 
-        mpm = pass_builder.getModulePassManager()
-        mpm.run(module_clone, pass_builder)
+        try:
+            subprocess.run(opt_cmd, check=True, capture_output=True)
+            ir_after = optimized_ll.read_text()
+            
+            subprocess.run(llc_cmd, check=True, capture_output=True)
+            subprocess.run(objcopy_cmd, check=True, capture_output=True)
 
-        return target_machine.emit_object(module_clone), str(module_clone)
+            return os.path.getsize(text_bin), ir_after
 
-def test_inline():
+        except subprocess.CalledProcessError as e:
+            logger.error(f"LLVM Tool Error: {e.stderr.decode()}")
+            raise
+
+def test_benchmark():
     llvm_code = """
     define internal i32 @callee(i32 %x) {
         %a = add i32 %x, 10
@@ -29,23 +65,24 @@ def test_inline():
         ret i32 %c
     }
     
-    define i32 @caller() {
-        %1 = call i32 @callee(i32 5)
+    define i32 @caller(i32 %input) {
+        %1 = call i32 @callee(i32 %input)
         ret i32 %1
     }
     """
     
-    mod = llvm.parse_assembly(llvm_code)
-    mod.verify()
-    
-    with_inlining_bytes, with_inlining_ir = compile_module(mod, enable_inlining=True)
-    without_inlining_bytes, without_inlining_ir = compile_module(mod, enable_inlining=False)
+    size_without, ir_without = compile_module(llvm_code, enable_inlining=False)
+    size_with, ir_with = compile_module(llvm_code, enable_inlining=True)
 
-    logger.info(f"Size without inlining: {len(without_inlining_bytes)} bytes")
-    logger.info(f"IR without inlining:\n{without_inlining_ir}")
+    logger.info(f"Before inlining: {size_without} bytes")
+    logger.info(f"With inlining: {size_with} bytes")
+    logger.success(f"Gain: {size_without - size_with} bytes")
 
-    logger.info(f"Size with inlining: {len(with_inlining_bytes)} bytes")
-    logger.info(f"IR with inlining:\n{with_inlining_ir}")
+    logger.info("IR without inlining:")
+    logger.info(ir_without)
+
+    logger.info("IR with inlining:")
+    logger.info(ir_with)
 
 if __name__ == "__main__":
-    test_inline()
+    test_benchmark()
