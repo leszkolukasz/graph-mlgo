@@ -1,3 +1,4 @@
+from typing import Iterator
 from llvmlite import binding as llvm
 import numpy as np
 import networkx as nx
@@ -8,6 +9,7 @@ from graph_mlgo.ir import compile_module
 from graph_mlgo.graph.embedding import Embedder
 from graph_mlgo import cpp_bindings # ty: ignore
 
+FEATURE_DIM = 3
 
 type Edge = tuple[str, str]
 
@@ -17,7 +19,11 @@ class Node:
     def __init__(self, name: str):
         self.name: str = name
         self.neighbours: set[str] = set()
-        self.features: np.ndarray = np.array([], dtype=np.float32)
+        self.features: np.ndarray = np.zeros(FEATURE_DIM, dtype=np.float32)
+
+    @staticmethod
+    def get_features_dim() -> int:
+        return FEATURE_DIM
 
 
 class Graph:
@@ -47,10 +53,11 @@ class Graph:
         num_unique_edges = len(self.edges)
         feat= np.array([float(num_nodes), float(num_edges), float(num_unique_edges)], dtype=np.float32)
 
-        assert len(feat) == self.get_global_embedding_dim()
+        assert len(feat) == Graph.get_global_embedding_dim()
         return feat
 
-    def get_global_embedding_dim(self) -> int:
+    @staticmethod
+    def get_global_embedding_dim() -> int:
         return 3
 
     def inline(self, edge: Edge) -> None:
@@ -64,6 +71,32 @@ class Graph:
         self._refresh_node_neighbours(caller)
         self._update_node_features(caller)
         self._update_node_features(callee)
+
+    def get_inline_order(self) -> Iterator[Edge]:
+        visited = set()
+        ordered_edges = []
+        
+        edges_by_callee: dict[str, list[Edge]] = {}
+        for edge in self.edges:
+            _, callee = edge
+            if callee not in edges_by_callee:
+                edges_by_callee[callee] = []
+            edges_by_callee[callee].append(edge)
+
+        def dfs(u):
+            visited.add(u)
+            
+            for v in self.nodes[u].neighbours:
+                if v not in visited:
+                    dfs(v)
+            
+            ordered_edges.extend(edges_by_callee.get(u, []))
+
+        for node_name in list(self.nodes.keys()):
+            if node_name not in visited:
+                dfs(node_name)
+        
+        return iter(ordered_edges)
 
     def _build_from_bitcode(self) -> None:
         for caller_func in self.module.functions:
@@ -199,11 +232,9 @@ class Graph:
         is_recursive = 1.0 if name in node.neighbours else 0.0
         out_deg = len(node.neighbours)
 
-        node.features = np.array([
-            float(num_instr),
-            float(out_deg),
-            is_recursive
-        ], dtype=np.float32)
+        node.features[0] = float(num_instr)
+        node.features[1] = float(out_deg)
+        node.features[2] = is_recursive
 
     def _compute_node_features(self) -> None:
         for name in self.nodes:

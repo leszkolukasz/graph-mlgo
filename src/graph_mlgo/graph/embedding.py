@@ -11,7 +11,7 @@ class Embedder(ABC):
         pass
 
     @abstractmethod
-    def get_embedding_dim(self, graph: 'Graph') -> int:
+    def get_embedding_dim(self, node_feat_dim: int, global_feat_dim: int) -> int:
         pass
         
 class TrivialEmbedder(Embedder):
@@ -23,6 +23,5 @@ class TrivialEmbedder(Embedder):
         global_feat = graph.get_global_features()
         return np.concatenate([feat_u, feat_v, global_feat])
 
-    def get_embedding_dim(self, graph: 'Graph') -> int:
-        sample_node = next(iter(graph.nodes.values()))
-        return 2 * len(sample_node.features) + graph.get_global_embedding_dim()
+    def get_embedding_dim(self, node_feat_dim: int, global_feat_dim: int) -> int:
+        return 2 * node_feat_dim + global_feat_dim
