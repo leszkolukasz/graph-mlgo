@@ -4,3 +4,6 @@ import llvmlite.binding.ffi as ffi
 
 logger.info(f"llvmlite LLVM version: {llvm.llvm_version_info}")
 logger.info(f"llvmlite library path: {ffi.lib._name}")
+
+llvm.initialize_native_target()
+llvm.initialize_native_asmprinter()

@@ -39,8 +39,8 @@ int inline_edges(uintptr_t module_addr, const std::string &callerName, const std
     return successCount;
 }
 
-PYBIND11_MODULE(llvm_inliner, m) {
-    m.doc() = "C++ LLVM Inliner";
+PYBIND11_MODULE(cpp_bindings, m) {
+    m.doc() = "C++ Bindings";
     
     m.def("inline_edges", &inline_edges, 
           py::arg("module_ptr_addr"), py::arg("caller_name"), py::arg("callee_name"),

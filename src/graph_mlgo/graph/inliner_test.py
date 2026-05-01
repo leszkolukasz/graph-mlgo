@@ -1,12 +1,10 @@
 import llvmlite.binding as llvm
 import ctypes
+from loguru import logger
 
-from graph_mlgo import llvm_inliner # ty: ignore
+from graph_mlgo import cpp_bindings # ty: ignore
 
 def test_inline():
-    llvm.initialize_native_target()
-    llvm.initialize_native_asmprinter()
-
     llvm_code = """
     define i32 @callee(i32 %x) {
         ret i32 %x
@@ -28,17 +26,17 @@ def test_inline():
     mod = llvm.parse_assembly(llvm_code)
     mod.verify()
     
-    print("=== BEFORE INLINING ===")
-    print(str(mod))
+    logger.info("=== BEFORE INLINING ===")
+    logger.info(str(mod))
     
     ptr_address = ctypes.cast(mod._ptr, ctypes.c_void_p).value
     
-    success_count = llvm_inliner.inline_edges(ptr_address, "caller", "callee")
+    success_count = cpp_bindings.inline_edges(ptr_address, "caller", "callee")
     
-    print(f"\nNumber of successful inlinings: {success_count}")
+    logger.info(f"\nNumber of successful inlinings: {success_count}")
     
-    print("=== AFTER INLINING ===")
-    print(str(mod))
+    logger.info("=== AFTER INLINING ===")
+    logger.info(str(mod))
 
 if __name__ == "__main__":
     test_inline()

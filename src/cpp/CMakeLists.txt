@@ -18,7 +18,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 link_directories(${LLVM_LIBRARY_DIRS})
 
-pybind11_add_module(llvm_inliner inliner.cpp)
+pybind11_add_module(cpp_bindings lib.cpp)
 
 llvm_map_components_to_libnames(llvm_libs 
     Core 
@@ -26,9 +26,11 @@ llvm_map_components_to_libnames(llvm_libs
     Analysis 
     TransformUtils 
     IPO
+    InstCombine
+    ScalarOpts
 )
 
-target_link_libraries(llvm_inliner PRIVATE pybind11::module ${llvm_libs})
-target_compile_features(llvm_inliner PRIVATE cxx_std_17)
+target_link_libraries(cpp_bindings PRIVATE pybind11::module ${llvm_libs})
+target_compile_features(cpp_bindings PRIVATE cxx_std_17)
 
-install(TARGETS llvm_inliner LIBRARY DESTINATION graph_mlgo)
+install(TARGETS cpp_bindings LIBRARY DESTINATION graph_mlgo)

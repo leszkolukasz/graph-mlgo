@@ -40,9 +40,6 @@ def ir_generator(target_gb: float, split_name: str, skip_rows: int, parse_bitcod
 
 
 def prepare_dataset(size_GB: int, output_path: str = "data", parse_bitcode: bool = False):
-    llvm.initialize_native_target()
-    llvm.initialize_native_asmprinter()
-
     logger.info(f"Generating train dataset ({size_GB} GB)...")
     
     train_dataset = Dataset.from_generator(
