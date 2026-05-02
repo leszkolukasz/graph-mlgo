@@ -1,9 +1,14 @@
 import time
+import os
 import numpy as np
 import jax
 import jax.numpy as jnp
 from tqdm import tqdm
 from loguru import logger
+
+import orbax.checkpoint
+from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
+
 
 from graph_mlgo.agent.trainer import PPOTrainer
 from graph_mlgo.agent.evaluator import PPOEvaluator
@@ -12,6 +17,9 @@ from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import TrivialEmbedder
+
+RUNNING_STAT_WINDOW = 100
+CHECKPOINT_DIR = os.path.abspath("./models")
 
 def run_training(config: PPOConfig):
     dataset = ComPileDataset(config.dataset_path)
@@ -35,41 +43,73 @@ def run_training(config: PPOConfig):
     update_fn = trainer.make_update_fn()
     eval_fn = evaluator.make_eval_fn()
 
+    options = CheckpointManagerOptions(max_to_keep=3, create=True)
+    mngr = CheckpointManager(
+        CHECKPOINT_DIR,
+        options=options
+    )
+
     rng = jax.random.PRNGKey(config.seed)
     rng, train_rng, eval_rng = jax.random.split(rng, 3)
 
     start = time.time()
     runner_state = trainer.init_runner(train_rng)
+    start_update = 0
+
+    latest_step = mngr.latest_step()
+    if latest_step is not None:
+        logger.info(f"Found checkpoint at update step {latest_step}. Restoring...")
+        runner_state = mngr.restore(
+            latest_step,
+            args=orbax.checkpoint.args.PyTreeRestore(item=runner_state)
+        )
+        start_update = latest_step + 1
+    else:
+        logger.info("No checkpoints found in the folder. Starting training from scratch.")
 
     train_metrics = []
     eval_steps = []
     eval_returns = []
 
-    eval_every_updates = max(1, config.eval_every_env_steps // config.batch_size)
-    bar = tqdm(range(config.num_updates), desc="Training PPO", unit="update")
+    bar = tqdm(
+        range(start_update, config.num_updates),
+        desc="Training PPO",
+        unit="update",
+        initial=start_update,
+        total=config.num_updates
+    )
 
-    avg_ret_sum = 0.0
-    avg_loss_sum = 0.0
+    last_k_returns = []
+    last_k_losses = []
+    last_eval_return = None
 
     for update_idx in bar:
         runner_state, metrics = update_fn(runner_state)
         train_metrics.append(metrics)
 
         do_eval = (
-            update_idx % eval_every_updates == 0
+            update_idx % config.eval_every_updates == 0
             or (update_idx + 1) == config.num_updates
         )
 
-        avg_ret_sum += float(metrics["mean_episode_return"])
-        avg_loss_sum += float(metrics["loss"])
+        do_checkpoint = (
+            update_idx % config.checkpoint_every_updates == 0
+            or (update_idx + 1) == config.num_updates
+        )
 
-        bar.set_postfix({
-            "last_ret": f"{float(metrics['mean_episode_return']):.1f}",
-            "last_len": f"{float(metrics['mean_episode_length']):.1f}",
-            "last_loss": f"{float(metrics['loss']):.3f}",
-            "avg_ret": f"{avg_ret_sum / (update_idx + 1):.1f}",
-            "avg_loss": f"{avg_loss_sum / (update_idx + 1):.3f}",
-        })
+        last_k_returns.append(float(metrics["mean_episode_return"]))
+        last_k_losses.append(float(metrics["loss"]))
+
+        while len(last_k_returns) > RUNNING_STAT_WINDOW:
+            last_k_returns.pop(0)
+            last_k_losses.pop(0)
+
+        postfix_dict = {
+            "ret": f"{float(metrics['mean_episode_return']):.1f}",
+            "loss": f"{float(metrics['loss']):.3f}",
+            "avg_ret": f"{np.mean(last_k_returns):.1f}",
+            "avg_loss": f"{np.mean(last_k_losses):.3f}",
+        }
 
         if do_eval:
             eval_rng, eval_step_rng = jax.random.split(eval_rng)
@@ -78,15 +118,35 @@ def run_training(config: PPOConfig):
             )
             eval_steps.append(update_idx * config.batch_size)
             eval_returns.append(float(jax.device_get(eval_metrics["eval_return"])))
+            last_eval_return = float(eval_metrics["eval_return"])
 
+        if do_checkpoint:
+            jax.tree_util.tree_map(lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x, runner_state)
+            mngr.save(
+                update_idx,
+                args=orbax.checkpoint.args.PyTreeSave(runner_state)
+            )
+
+        if last_eval_return is not None:
+            postfix_dict["eval_ret"] = f"{last_eval_return:.1f}"
+
+        bar.set_postfix(postfix_dict)
+
+    mngr.wait_until_finished()
     elapsed = time.time() - start
 
-    metrics = jax.device_get(
-        jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, axis=0), *train_metrics)
-    )
-    returns = np.asarray(metrics["mean_episode_return"])
-    losses = np.asarray(metrics["loss"])
-    steps = np.arange(0, config.num_updates) * config.batch_size
+    if train_metrics:
+        metrics = jax.device_get(
+            jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, axis=0), *train_metrics)
+        )
+        returns = np.asarray(metrics["mean_episode_return"])
+        losses = np.asarray(metrics["loss"])
+        steps = np.arange(start_update, config.num_updates) * config.batch_size
+    else:
+        metrics = {}
+        returns = np.array([])
+        losses = np.array([])
+        steps = np.array([])
 
     result = {
         "runner_state": runner_state,

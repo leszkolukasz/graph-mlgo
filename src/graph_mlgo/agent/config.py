@@ -37,7 +37,9 @@ class PPOConfig:
     reward_clip: float = 10.0
     max_log_ratio: float = 20.0
 
-    eval_every_env_steps: int = 10_000
+    checkpoint_every_updates: int = 10
+
+    eval_every_updates: int = 10
     eval_num_envs: int = 4
     eval_horizon: int = 1000
 

@@ -13,7 +13,7 @@
 version: 1
 metadata:
   content_hash:
-    linux-64: 64a6904f0484dc2d16407115c7363fdccb6e542b79a427823ab0c066d25c8025
+    linux-64: 206cba3c97eb4af5fb38cd87225cb50bee922020626aec7875db185cc823396c
   channels:
   - url: local
     used_env_vars: []
@@ -1622,6 +1622,47 @@ package:
   hash:
     md5: 2cd94587f3a401ae05e03a6caf09539d
     sha256: 25ba37da5c39697a77fce2c9a15e48cf0a84f1464ad2aafbe53d8357a9f6cc8c
+  category: main
+  optional: false
+- name: grpcio
+  version: 1.78.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    libabseil: '>=20260107.1,<20260108.0a0'
+    libgcc: '>=14'
+    libgrpc: 1.78.1
+    libstdcxx: '>=14'
+    libzlib: '>=1.3.1,<2.0a0'
+    python: '>=3.12,<3.13.0a0'
+    python_abi: 3.12.*
+    typing-extensions: '>=4.12,<5'
+  url: https://conda.anaconda.org/conda-forge/linux-64/grpcio-1.78.1-py312h39ee1c6_0.conda
+  hash:
+    md5: b1995dadc14463d8f914c54cf2061a07
+    sha256: 43b09e083e0c3141cb118f84924b498b32d86da5f6a458b60e56e65cd5b97c4e
+  category: main
+  optional: false
+- name: grpcio-tools
+  version: 1.78.1
+  manager: conda
+  platform: linux-64
+  dependencies:
+    __glibc: '>=2.17,<3.0.a0'
+    grpcio: 1.78.1
+    libabseil: '>=20260107.1,<20260108.0a0'
+    libgcc: '>=14'
+    libprotobuf: '>=6.33.5,<6.33.6.0a0'
+    libstdcxx: '>=14'
+    protobuf: ''
+    python: '>=3.12,<3.13.0a0'
+    python_abi: 3.12.*
+    setuptools: ''
+  url: https://conda.anaconda.org/conda-forge/linux-64/grpcio-tools-1.78.1-py312h871cee9_0.conda
+  hash:
+    md5: b463cc25b53491a6180e50a323d67d8a
+    sha256: ff50969e46d73f08759e0a6d787e56a88908c9686db72a5025a877e6472c56e0
   category: main
   optional: false
 - name: gxx_impl_linux-64
@@ -4021,13 +4062,14 @@ package:
   category: main
   optional: false
 - name: orbax-checkpoint
-  version: 0.11.36
+  version: 0.11.37
   manager: conda
   platform: linux-64
   dependencies:
     absl-py: ''
     aiofiles: ''
     etils: ''
+    grpcio-tools: ''
     humanize: ''
     importlib_resources: ''
     jax: '>=0.6.0'
@@ -4041,10 +4083,10 @@ package:
     tensorstore: '>=0.1.74'
     typing_extensions: ''
     uvloop: ''
-  url: https://conda.anaconda.org/conda-forge/noarch/orbax-checkpoint-0.11.36-pyhc364b38_0.conda
+  url: https://conda.anaconda.org/conda-forge/noarch/orbax-checkpoint-0.11.37-pyhc364b38_0.conda
   hash:
-    md5: ccfb16e10873fd06992cb3eb50fe6a41
-    sha256: f25488e6ac5f3c2c7d53d540f7c8f28a495231b7cf4f205b7922f89c90020dac
+    md5: 44d0f524ea8a1ec6d009dd52d16fdeef
+    sha256: b8fe27a515636b7c59b29e0f7f838c9d8390b84d4b01da5a802d03f7ac140641
   category: main
   optional: false
 - name: orc
