@@ -80,6 +80,7 @@ def run_training(config: PPOConfig):
 
     last_k_returns = []
     last_k_losses = []
+    avg_length_sum = 0.0
     last_eval_return = None
 
     for update_idx in bar:
@@ -97,14 +98,17 @@ def run_training(config: PPOConfig):
 
         last_k_returns.append(float(metrics["mean_episode_return"]))
         last_k_losses.append(float(metrics["loss"]))
+        avg_length_sum += float(metrics["mean_episode_length"])
 
         while len(last_k_returns) > RUNNING_STAT_WINDOW:
             last_k_returns.pop(0)
             last_k_losses.pop(0)
             
         step_log = {
-            "train/mean_episode_return": float(metrics["mean_episode_return"]),
-            "train/mean_episode_length": float(metrics["mean_episode_length"]),
+            "train/mean_return": float(metrics["mean_episode_return"]),
+            "train/mean_length": float(avg_length_sum / (update_idx - start_update + 1)),
+            "train/running_mean_return": float(np.mean(last_k_returns)),
+            "train/running_loss": float(np.mean(last_k_losses)),
             "train/loss": float(metrics["loss"]),
             "train/actor_loss": float(metrics["actor_loss"]),
             "train/value_loss": float(metrics["value_loss"]),
