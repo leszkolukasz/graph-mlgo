@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 from flax.training.train_state import TrainState
 import gymnasium as gym
@@ -64,32 +65,25 @@ class PPOTrainer:
         env = self.env
         agent = self.agent
 
-        def env_step(carry, _):
-            runner_state = carry
-
+        @jax.jit
+        def jax_act(runner_state):
             if cfg.normalize_obs:
                 obs_norm = update_running_norm(runner_state.obs_norm, runner_state.obs)
-                obs_in = normalize(
-                    runner_state.obs, obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip
-                )
+                obs_in = normalize(runner_state.obs, obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip)
             else:
                 obs_norm = runner_state.obs_norm
                 obs_in = runner_state.obs
 
             rng, act_rng = jax.random.split(runner_state.rng)
-            action, _, log_prob = agent.act(
-                runner_state.train_state.params, obs_in, act_rng
-            )
-            value = agent.apply(
-                runner_state.train_state.params, obs_in, method=agent.critic
-            )
+            action, _, log_prob = agent.act(runner_state.train_state.params, obs_in, act_rng)
+            value = agent.apply(runner_state.train_state.params, obs_in, method=agent.critic)
 
-            next_obs, reward, terminated, truncated, _ = env.step(action)
-            next_obs = jnp.array(next_obs, dtype=jnp.float32)
-            reward = jnp.array(reward, dtype=jnp.float32)
-            done = jnp.logical_or(terminated, truncated).astype(jnp.float32)
+            return action, value, log_prob, obs_norm, obs_in, rng
 
+        @jax.jit
+        def jax_post_step(runner_state, obs_norm, obs_in, rng, action, value, log_prob, next_obs, reward, done):
             return_for_norm = runner_state.running_returns * cfg.gamma + reward
+            
             if cfg.normalize_reward:
                 rew_norm = update_running_norm(runner_state.rew_norm, reward)
                 reward_out = reward / jnp.sqrt(jnp.maximum(rew_norm.var, cfg.norm_eps))
@@ -97,6 +91,7 @@ class PPOTrainer:
             else:
                 rew_norm = runner_state.rew_norm
                 reward_out = reward
+                
             next_running_returns = return_for_norm * (1.0 - done)
 
             new_episode_returns = runner_state.episode_returns + reward
@@ -108,17 +103,10 @@ class PPOTrainer:
             episode_lengths = (new_episode_lengths * (1.0 - done)).astype(jnp.int32)
 
             transition = Transition(
-                obs=obs_in,
-                action=action,
-                reward=reward_out,
-                done=done,
-                value=value, # ty: ignore
-                log_prob=log_prob,
+                obs=obs_in, action=action, reward=reward_out, done=done, value=value, log_prob=log_prob
             )
             rollout_info = RolloutInfo(
-                completed_return=completed_return,
-                completed_length=completed_length,
-                completed=done,
+                completed_return=completed_return, completed_length=completed_length, completed=done
             )
             next_carry = RunnerState(
                 train_state=runner_state.train_state,
@@ -130,14 +118,12 @@ class PPOTrainer:
                 episode_returns=episode_returns,
                 episode_lengths=episode_lengths,
             )
-            return next_carry, (transition, rollout_info)
+            return next_carry, transition, rollout_info
 
         def update_minibatch(train_state, minibatch):
             batch, adv_batch, target_batch = minibatch
-
             def loss_on_params(params):
                 return ppo_loss(params, agent, batch, adv_batch, target_batch, cfg)
-
             grad_fn = jax.value_and_grad(loss_on_params, has_aux=True)
             (loss, aux), grads = grad_fn(train_state.params)
             train_state = train_state.apply_gradients(grads=grads)
@@ -145,7 +131,6 @@ class PPOTrainer:
 
         def update_epoch(carry, _):
             train_state, flat_traj, flat_adv, flat_targets, rng = carry
-
             rng, perm_rng = jax.random.split(rng)
             permutation = jax.random.permutation(perm_rng, cfg.batch_size)
 
@@ -157,39 +142,25 @@ class PPOTrainer:
 
             minibatches = (
                 jax.tree_util.tree_map(
-                    lambda x: x.reshape(
-                        (cfg.num_minibatches, cfg.minibatch_size) + x.shape[1:]
-                    ),
+                    lambda x: x.reshape((cfg.num_minibatches, cfg.minibatch_size) + x.shape[1:]),
                     shuffled_traj,
                 ),
                 shuffled_adv.reshape((cfg.num_minibatches, cfg.minibatch_size)),
                 shuffled_targets.reshape((cfg.num_minibatches, cfg.minibatch_size)),
             )
-            train_state, loss_info = jax.lax.scan(
-                update_minibatch, train_state, minibatches
-            )
+            train_state, loss_info = jax.lax.scan(update_minibatch, train_state, minibatches)
             return (train_state, flat_traj, flat_adv, flat_targets, rng), loss_info
 
-        def update_step(runner_state):
-            state = runner_state
-            state, (traj, rollout_info) = jax.lax.scan(
-                env_step, state, None, length=cfg.rollout_length
-            )
-
+        @jax.jit
+        def jax_update(state, traj, rollout_info):
             last_obs_in = (
-                normalize(
-                    state.obs, state.obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip
-                )
+                normalize(state.obs, state.obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip)
                 if cfg.normalize_obs
                 else state.obs
             )
-            last_value = agent.apply(
-                state.train_state.params, last_obs_in, method=agent.critic
-            )
+            last_value = agent.apply(state.train_state.params, last_obs_in, method=agent.critic)
 
-            advantages, targets = compute_gae(
-                traj, last_value, cfg.gamma, cfg.gae_lambda
-            )
+            advantages, targets = compute_gae(traj, last_value, cfg.gamma, cfg.gae_lambda)
             flat_traj = jax.tree_util.tree_map(
                 lambda x: x.reshape((cfg.batch_size,) + x.shape[2:]), traj
             )
@@ -244,4 +215,34 @@ class PPOTrainer:
             )
             return next_runner_state, metrics
 
-        return jax.jit(update_step)
+        def update_step(runner_state):
+            state = runner_state
+            transitions = []
+            rollout_infos = []
+
+            for _ in range(cfg.rollout_length):
+                action, value, log_prob, obs_norm, obs_in, rng = jax_act(state)
+
+                action_np = np.asarray(action)
+                next_obs, reward, terminated, truncated, _ = env.step(action_np)
+
+                next_obs_jax = jnp.asarray(next_obs, dtype=jnp.float32)
+                reward_jax = jnp.asarray(reward, dtype=jnp.float32)
+                done_jax = jnp.logical_or(terminated, truncated).astype(jnp.float32)
+
+                state, transition, rollout_info = jax_post_step(
+                    state, obs_norm, obs_in, rng, action, value, log_prob,
+                    next_obs_jax, reward_jax, done_jax
+                )
+
+                transitions.append(transition)
+                rollout_infos.append(rollout_info)
+
+            traj = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *transitions)
+            stacked_rollout_info = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *rollout_infos)
+
+            next_runner_state, metrics = jax_update(state, traj, stacked_rollout_info)
+            
+            return next_runner_state, metrics
+
+        return update_step

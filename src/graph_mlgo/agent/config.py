@@ -11,9 +11,9 @@ class PPOConfig:
     total_timesteps: int = 10_000_000
     num_envs: int = 4
 
-    rollout_length: int = 128
+    rollout_length: int = 512
     update_epochs: int = 16
-    minibatch_size: int = 16
+    minibatch_size: int = 128
 
     lr: float = 3e-4
     gamma: float = 0.99

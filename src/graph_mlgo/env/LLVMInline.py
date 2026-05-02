@@ -56,11 +56,14 @@ class LLVMInlineEnv(gym.Env):
         obs = self.graph.get_edge_embedding(self.current_edge, self.embedder)
         return obs, {}
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action: int | np.ndarray) -> tuple[np.ndarray, float, bool, bool, dict]:
         assert self.graph is not None
         assert self.current_edge is not None
         assert self.edge_iterator is not None
         
+        if isinstance(action, np.ndarray):
+            action = np.argmax(action).item()
+
         if action == 1:
             self.graph.inline(self.current_edge)
             
