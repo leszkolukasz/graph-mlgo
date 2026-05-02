@@ -155,6 +155,8 @@ def run_training(config: PPOConfig):
 if __name__ == "__main__":
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",
+        num_envs=1,
+        hidden_sizes=(128, 128)
     )
 
     if len(sys.argv) > 1:

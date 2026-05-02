@@ -11,16 +11,16 @@ class PPOConfig:
     total_timesteps: int = 10_000_000
     num_envs: int = 1
 
-    rollout_length: int = 512
-    update_epochs: int = 16
-    minibatch_size: int = 128
+    rollout_length: int = 1024
+    update_epochs: int = 4
+    minibatch_size: int = 512
 
-    lr: float = 3e-4
+    lr: float = 1e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
     vf_coef: float = 0.5
-    ent_coef: float = 0.0
+    ent_coef: float = 0.01
     max_grad_norm: float = 0.5
 
     episode_length: int = MAX_EDGES
@@ -37,9 +37,9 @@ class PPOConfig:
     reward_clip: float = 10.0
     max_log_ratio: float = 20.0
 
-    checkpoint_every_updates: int = 10
+    checkpoint_every_updates: int = 50
 
-    eval_every_updates: int = 10
+    eval_every_updates: int = 50
     eval_num_envs: int = 1
     eval_horizon: int = 1000
 
@@ -47,5 +47,5 @@ class PPOConfig:
 
     def __post_init__(self):
         self.batch_size = self.num_envs * self.rollout_length
-        self.num_minibatches = (self.batch_size + self.minibatch_size - 1) // self.minibatch_size
+        self.num_minibatches = self.batch_size // self.minibatch_size
         self.num_updates = self.total_timesteps // self.batch_size

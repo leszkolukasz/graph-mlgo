@@ -20,13 +20,14 @@ class Node:
 
     @staticmethod
     def get_features_dim() -> int:
-        return 8
+        return 10
 
 
 class Graph:
     nodes: dict[str, Node]
     edges: dict[Edge, int] # multiplicity of edges
     module: llvm.ModuleRef
+    node_height: dict[str, int]
 
     edges_by_callee: dict[str, set[Edge]]
 
@@ -34,6 +35,7 @@ class Graph:
         self.nodes = {}
         self.edges = dict()
         self.edges_by_callee = dict()
+        self.node_height = dict()
 
         self.module = llvm.parse_bitcode(bitcode)
         self.module.verify()
@@ -105,7 +107,7 @@ class Graph:
                 if v not in visited:
                     dfs(v)
             
-            ordered_edges.extend(list(self.edges_by_callee[u]))
+            ordered_edges.extend(list(self.edges_by_callee.get(u, [])))
 
         for node_name in list(self.nodes.keys()):
             if node_name not in visited:
@@ -187,6 +189,7 @@ class Graph:
             on_stack.add(node_name)
 
             node = self.nodes[node_name]
+            h = 0
             
             for neighbour in node.neighbours:
                 if neighbour not in time_in:
@@ -195,12 +198,18 @@ class Graph:
                 elif neighbour in on_stack:
                     lowlinks[node_name] = min(lowlinks[node_name], time_in[neighbour])
 
+                if neighbour != node_name:
+                    h = max(h, self.node_height.get(neighbour, -1) + 1)
+
+            self.node_height[node_name] = h
+
             if lowlinks[node_name] == time_in[node_name]:
                 current_scc = set()
                 while True:
                     w = stack.pop()
                     on_stack.remove(w)
                     current_scc.add(w)
+                    self.node_height[w] = self.node_height[node_name]
                     if w == node_name:
                         break
                 sccs.append(current_scc)
@@ -263,17 +272,22 @@ class Graph:
         
         num_instr = 0
         cond_blocks = 0
+        simple_instr = 0
+        simple_ops = {"add", "fadd", "sub", "fsub", "mul", "fmul", "sdiv", "udiv", "fdiv", "srem", "urem", "frem", "and", "or", "xor", "shl", "lshr", "ashr", "icmp", "fcmp"}
         for block in blocks:
             instrs = list(block.instructions)
             num_instr += len(instrs)
             if instrs and instrs[-1].opcode in ("br", "switch"):
                 cond_blocks += 1
+            for instr in instrs:
+                if instr.opcode in simple_ops:
+                    simple_instr += 1
 
         is_recursive = 1.0 if name in node.neighbours else 0.0
-        in_deg = len(self.edges_by_callee[name])
-        in_deg_with_multiplicity = sum(self.edges[edge] for edge in self.edges_by_callee[name])
+        in_deg = len(self.edges_by_callee.get(name, []))
+        in_deg_with_multiplicity = sum(self.edges.get(edge, 0) for edge in self.edges_by_callee.get(name, []))
         out_deg = len(node.neighbours)
-        out_deg_with_multiplicity = sum(self.edges[(name, neighbour)] for neighbour in node.neighbours)
+        out_deg_with_multiplicity = sum(self.edges.get((name, neighbour), 0) for neighbour in node.neighbours)
 
         node.features[0] = is_recursive
         node.features[1] = float(in_deg)
@@ -283,6 +297,8 @@ class Graph:
         node.features[5] = float(num_instr)
         node.features[6] = float(num_blocks)
         node.features[7] = float(cond_blocks)
+        node.features[8] = float(simple_instr)
+        node.features[9] = float(self.node_height[node.name])
 
     def _compute_node_features(self) -> None:
         for name in self.nodes:
