@@ -1,14 +1,17 @@
 import time
 import os
+import sys
+import datetime
+from dataclasses import asdict
+
 import numpy as np
 import jax
-import jax.numpy as jnp
 from tqdm import tqdm
 from loguru import logger
 
+import wandb
 import orbax.checkpoint
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
-
 
 from graph_mlgo.agent.trainer import PPOTrainer
 from graph_mlgo.agent.evaluator import PPOEvaluator
@@ -67,10 +70,6 @@ def run_training(config: PPOConfig):
     else:
         logger.info("No checkpoints found in the folder. Starting training from scratch.")
 
-    train_metrics = []
-    eval_steps = []
-    eval_returns = []
-
     bar = tqdm(
         range(start_update, config.num_updates),
         desc="Training PPO",
@@ -85,7 +84,6 @@ def run_training(config: PPOConfig):
 
     for update_idx in bar:
         runner_state, metrics = update_fn(runner_state)
-        train_metrics.append(metrics)
 
         do_eval = (
             update_idx % config.eval_every_updates == 0
@@ -103,6 +101,17 @@ def run_training(config: PPOConfig):
         while len(last_k_returns) > RUNNING_STAT_WINDOW:
             last_k_returns.pop(0)
             last_k_losses.pop(0)
+            
+        step_log = {
+            "train/mean_episode_return": float(metrics["mean_episode_return"]),
+            "train/mean_episode_length": float(metrics["mean_episode_length"]),
+            "train/loss": float(metrics["loss"]),
+            "train/actor_loss": float(metrics["actor_loss"]),
+            "train/value_loss": float(metrics["value_loss"]),
+            "train/entropy": float(metrics["entropy"]),
+            "train/is_finite": float(metrics["is_finite"]),
+            "env_step": update_idx * config.batch_size,
+        }
 
         postfix_dict = {
             "ret": f"{float(metrics['mean_episode_return']):.1f}",
@@ -116,9 +125,12 @@ def run_training(config: PPOConfig):
             eval_metrics = eval_fn(
                 runner_state.train_state, runner_state.obs_norm, eval_step_rng
             )
-            eval_steps.append(update_idx * config.batch_size)
-            eval_returns.append(float(jax.device_get(eval_metrics["eval_return"])))
-            last_eval_return = float(eval_metrics["eval_return"])
+
+            current_eval_return = float(jax.device_get(eval_metrics["eval_return"]))
+            last_eval_return = current_eval_return
+            step_log["eval/return"] = current_eval_return
+
+        wandb.log(step_log, step=update_idx)
 
         if do_checkpoint:
             jax.tree_util.tree_map(lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x, runner_state)
@@ -133,42 +145,27 @@ def run_training(config: PPOConfig):
         bar.set_postfix(postfix_dict)
 
     mngr.wait_until_finished()
-    elapsed = time.time() - start
-
-    if train_metrics:
-        metrics = jax.device_get(
-            jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, axis=0), *train_metrics)
-        )
-        returns = np.asarray(metrics["mean_episode_return"])
-        losses = np.asarray(metrics["loss"])
-        steps = np.arange(start_update, config.num_updates) * config.batch_size
-    else:
-        metrics = {}
-        returns = np.array([])
-        losses = np.array([])
-        steps = np.array([])
-
-    result = {
-        "runner_state": runner_state,
-        "metrics": metrics,
-    }
-
-    return {
-        "result": result,
-        "metrics": metrics,
-        "returns": returns,
-        "losses": losses,
-        "steps": steps,
-        "eval_steps": np.asarray(eval_steps),
-        "eval_returns": np.asarray(eval_returns),
-        "elapsed": elapsed,
-    }
+    
+    logger.info("Training completed after %.2f seconds.", time.time() - start)
 
 if __name__ == "__main__":
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",
-        num_envs=1,
-        eval_num_envs=1,
+    )
+
+    if len(sys.argv) > 1:
+        run_id = str(sys.argv[1])
+        logger.info(f"Run id: {run_id}")
+    else:
+        run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        logger.info(f"No run id provided. Using timestamp: {run_id}")
+
+    wandb.init(
+        project="rl",
+        name=run_id,
+        id=run_id,
+        resume="allow",
+        config=asdict(config)
     )
 
     result = run_training(config)

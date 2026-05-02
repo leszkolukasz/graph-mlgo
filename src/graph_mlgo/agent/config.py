@@ -9,7 +9,7 @@ class PPOConfig:
     dataset_path: str
 
     total_timesteps: int = 10_000_000
-    num_envs: int = 4
+    num_envs: int = 1
 
     rollout_length: int = 512
     update_epochs: int = 16
@@ -40,7 +40,7 @@ class PPOConfig:
     checkpoint_every_updates: int = 10
 
     eval_every_updates: int = 10
-    eval_num_envs: int = 4
+    eval_num_envs: int = 1
     eval_horizon: int = 1000
 
     seed: int = 0
