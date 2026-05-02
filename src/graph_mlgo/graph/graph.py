@@ -20,23 +20,33 @@ class Node:
 
     @staticmethod
     def get_features_dim() -> int:
-        return 3
+        return 8
 
 
 class Graph:
     nodes: dict[str, Node]
-    edges: dict[Edge, int] # multiplicity of edge
+    edges: dict[Edge, int] # multiplicity of edges
     module: llvm.ModuleRef
+
+    edges_by_callee: dict[str, set[Edge]]
 
     def __init__(self, bitcode: bytes):
         self.nodes = {}
         self.edges = dict()
+        self.edges_by_callee = dict()
 
         self.module = llvm.parse_bitcode(bitcode)
         self.module.verify()
 
         self._build_from_bitcode()
         self._scc()
+
+        for edge in self.edges:
+            _, callee = edge
+            if callee not in self.edges_by_callee:
+                self.edges_by_callee[callee] = set()
+            self.edges_by_callee[callee].add(edge)
+
         self._compute_node_features()
 
     def calc_native_size(self) -> int:
@@ -77,21 +87,16 @@ class Graph:
         self.module.verify()
         
         self.edges.pop(edge, None)
+        self.edges_by_callee[callee].discard(edge)
         
         self._refresh_node_neighbours(caller)
         self._update_node_features(caller)
         self._update_node_features(callee)
+        
 
     def get_inline_order(self) -> Iterator[Edge]:
         visited = set()
-        ordered_edges = []
-        
-        edges_by_callee: dict[str, list[Edge]] = {}
-        for edge in self.edges:
-            _, callee = edge
-            if callee not in edges_by_callee:
-                edges_by_callee[callee] = []
-            edges_by_callee[callee].append(edge)
+        ordered_edges = []        
 
         def dfs(u):
             visited.add(u)
@@ -100,7 +105,7 @@ class Graph:
                 if v not in visited:
                     dfs(v)
             
-            ordered_edges.extend(edges_by_callee.get(u, []))
+            ordered_edges.extend(list(self.edges_by_callee[u]))
 
         for node_name in list(self.nodes.keys()):
             if node_name not in visited:
@@ -252,14 +257,32 @@ class Graph:
     def _update_node_features(self, name: str) -> None:
         node = self.nodes[name]
         func = self.module.get_function(name)
-        
-        num_instr = sum(len(list(block.instructions)) for block in func.blocks)
-        is_recursive = 1.0 if name in node.neighbours else 0.0
-        out_deg = len(node.neighbours)
 
-        node.features[0] = float(num_instr)
-        node.features[1] = float(out_deg)
-        node.features[2] = is_recursive
+        blocks = list(func.blocks)
+        num_blocks = len(blocks)
+        
+        num_instr = 0
+        cond_blocks = 0
+        for block in blocks:
+            instrs = list(block.instructions)
+            num_instr += len(instrs)
+            if instrs and instrs[-1].opcode in ("br", "switch"):
+                cond_blocks += 1
+
+        is_recursive = 1.0 if name in node.neighbours else 0.0
+        in_deg = len(self.edges_by_callee[name])
+        in_deg_with_multiplicity = sum(self.edges[edge] for edge in self.edges_by_callee[name])
+        out_deg = len(node.neighbours)
+        out_deg_with_multiplicity = sum(self.edges[(name, neighbour)] for neighbour in node.neighbours)
+
+        node.features[0] = is_recursive
+        node.features[1] = float(in_deg)
+        node.features[2] = float(in_deg_with_multiplicity)
+        node.features[3] = float(out_deg)
+        node.features[4] = float(out_deg_with_multiplicity)
+        node.features[5] = float(num_instr)
+        node.features[6] = float(num_blocks)
+        node.features[7] = float(cond_blocks)
 
     def _compute_node_features(self) -> None:
         for name in self.nodes:
