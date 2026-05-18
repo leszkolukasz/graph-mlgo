@@ -4,6 +4,7 @@ import jax.numpy as jnp
 from datasets import Dataset
 
 from graph_mlgo.agent.config import PPOConfig
+from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.types import Transition
 from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import Embedder
@@ -11,7 +12,7 @@ from graph_mlgo.graph.embedding import Embedder
 from .types import RunningNorm
 
 
-def init_running_norm(shape):
+def init_running_norm(shape: tuple[int, ...]) -> RunningNorm:
     return RunningNorm(
         mean=jnp.zeros(shape, dtype=jnp.float32),
         var=jnp.ones(shape, dtype=jnp.float32),
@@ -50,7 +51,7 @@ def normalize(
 
 def make_env(
     dataset: Dataset, embedder: Embedder, num_envs: int, episode_length: int = 1000
-):
+) -> gym.Env:
     def make_single_env(idx: int):
         dataset_shard = dataset.shard(num_shards=num_envs, index=idx)
 
@@ -63,11 +64,13 @@ def make_env(
 
     vec_env = gym.vector.AsyncVectorEnv(env_fns=env_fns, context="spawn")
 
-    return vec_env
+    return vec_env  # ty: ignore
 
 
-def compute_gae(traj: Transition, last_value, gamma, gae_lambda):
-    def scan_gae(carry, t):
+def compute_gae(
+    traj: Transition, last_value: jnp.ndarray, gamma: float, gae_lambda: float
+):
+    def scan_gae(carry: tuple[jnp.ndarray, jnp.ndarray], t: int):
         gae, next_value = carry
 
         delta = traj.reward[t] + gamma * next_value * (1 - traj.done[t]) - traj.value[t]
@@ -88,13 +91,13 @@ def compute_gae(traj: Transition, last_value, gamma, gae_lambda):
 
 
 def ppo_loss(
-    params,
-    agent,
+    params: dict,
+    agent: PPOAgent,
     batch: Transition,
     advantages: jnp.ndarray,
     targets: jnp.ndarray,
     cfg: PPOConfig,
-):
+) -> tuple[jnp.ndarray, tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
     log_prob, entropy = agent.get_action_log_prob_and_entropy(
         params, batch.obs, batch.action
     )
@@ -111,7 +114,7 @@ def ppo_loss(
     clipped = jnp.clip(ratio, 1 - cfg.clip_eps, 1 + cfg.clip_eps) * advantages
     actor_loss = -jnp.minimum(unclipped, clipped).mean()
 
-    value_loss = jnp.mean((value - targets) ** 2)
+    value_loss = jnp.mean((value - targets) ** 2)  # ty: ignore
 
     entropy_loss = entropy.mean()
 

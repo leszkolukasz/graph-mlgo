@@ -3,6 +3,7 @@ import os
 import sys
 import time
 from dataclasses import asdict
+from typing import cast
 
 import jax
 import numpy as np
@@ -16,6 +17,7 @@ from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.evaluator import PPOEvaluator
 from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.trainer import PPOTrainer
+from graph_mlgo.agent.types import RunnerState
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import TrivialEmbedder
@@ -75,8 +77,11 @@ def run_training(config: PPOConfig):
     latest_step = mngr.latest_step()
     if latest_step is not None:
         logger.info(f"Found checkpoint at update step {latest_step}. Restoring...")
-        runner_state = mngr.restore(
-            latest_step, args=orbax.checkpoint.args.PyTreeRestore(item=runner_state)
+        runner_state = cast(
+            RunnerState,
+            mngr.restore(
+                latest_step, args=orbax.checkpoint.args.PyTreeRestore(item=runner_state)
+            ),
         )
         start_update = latest_step + 1
     else:
