@@ -72,33 +72,21 @@ class GraphSAGENet(nn.Module):
     depth: int
     hidden_dim: int
     output_dim: int
-    activation = nn.relu
-    W: list[nn.Dense]
     aggregator_cls: type[Aggregator]
-    aggregators: list[Aggregator]
-
-    def __init__(
-        self,
-        depth: int,
-        hidden_dim: int,
-        output_dim: int,
-        aggregator_cls: type[Aggregator],
-    ):
-        super().__init__()
-        self.depth = depth
-        self.hidden_dim = hidden_dim
-        self.output_dim = output_dim
-        self.aggregator_cls = aggregator_cls
+    activation: Callable = nn.relu
 
     def setup(self):
-        self.W = []
-        for d in range(self.depth):
-            out_dim = self.output_dim if d == self.depth - 1 else self.hidden_dim
-            self.W.append(nn.Dense(out_dim))
+        self.W = [
+            nn.Dense(
+                self.output_dim if d == self.depth - 1 else self.hidden_dim,
+                name=f"W_{d}",
+            )
+            for d in range(self.depth)
+        ]
 
-        self.aggregators = []
-        for _ in range(self.depth):
-            self.aggregators.append(self.aggregator_cls())
+        self.aggregators = [
+            self.aggregator_cls(name=f"agg_{d}") for d in range(self.depth)
+        ]
 
     # h: (N, node_feat_dim)
     # neighbor_indices: list of (num_targets, num_neighbours, hidden_dim)
@@ -118,7 +106,9 @@ class GraphSAGENet(nn.Module):
             h_concat = jnp.concatenate([h_target, h_aggregated], axis=-1)
 
             h_new = self.W[d](h_concat)
-            h_new = self.activation(h_new)  # ty: ignore
+
+            if d < self.depth - 1:
+                h_new = self.activation(h_new)
 
             h_new = h_new / jnp.maximum(
                 jnp.linalg.norm(h_new, axis=-1, keepdims=True), 1e-6

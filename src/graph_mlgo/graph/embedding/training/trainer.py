@@ -7,8 +7,8 @@ import optax
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
 
-from graph_mlgo.graph.graph import Graph, Node
-from graph_mlgo.graph.embedding.embedding import GraphSAGENet
+from graph_mlgo.graph import Graph, Node
+from graph_mlgo.graph.embedding import GraphSAGENet
 from graph_mlgo.graph.embedding.config import GraphSageConfig
 from graph_mlgo.graph.embedding.utils import extract_neighborhood, graphsage_loss
 
@@ -118,7 +118,7 @@ class GraphSAGETrainer:
             v_idx = np.arange(B, 2 * B, dtype=np.int32)
             neg_idx = np.arange(2 * B, 2 * B + B * Q, dtype=np.int32).reshape((B, Q))
 
-            h_jax = jnp.asarray(h_np, dtype=jnp.float32)
+            h_jax = jnp.asarray(a=h_np, dtype=jnp.float32)
             neighbor_indices_jax = [
                 jnp.asarray(idx, dtype=jnp.int32) for idx in neighbor_indices_np
             ]

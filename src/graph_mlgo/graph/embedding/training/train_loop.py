@@ -12,7 +12,9 @@ from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from tqdm import tqdm
 
 from graph_mlgo.dataset import ComPileDataset
+from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding import GraphSAGENet
+from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
 from graph_mlgo.graph.embedding.config import GraphSageConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     GraphSAGERunnerState,
@@ -39,7 +41,7 @@ def run_training(config: GraphSageConfig):
         depth=config.depth,
         hidden_dim=config.hidden_dim,
         output_dim=config.output_dim,
-        aggregator_cls=config.aggregator_cls,
+        aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
     )
 
     trainer = GraphSAGETrainer(model=model, config=config)
@@ -87,13 +89,21 @@ def run_training(config: GraphSageConfig):
     start_epoch = start_update // (len(dataset.train) * config.num_batches)
 
     for epoch in range(start_epoch, config.num_epochs):
-        for graph_idx, graph in enumerate(dataset.train):
+        for graph_idx, llvm_sample in enumerate(dataset.train):
+            graph = Graph(llvm_sample["content"])
+
             batches = sample_training_batches(
                 graph=graph,
                 num_batches=config.num_batches,
                 batch_size=config.batch_size,
                 num_negatives=config.num_negatives,
             )
+
+            if not batches:
+                # logger.warning(
+                #     f"Graph {graph_idx} has no valid training samples. Skipping."
+                # )
+                continue
 
             for batch_data in batches:
                 if update_idx < start_update:

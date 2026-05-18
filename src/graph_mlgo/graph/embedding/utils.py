@@ -6,15 +6,14 @@ import jax.numpy as jnp
 import numpy as np
 from flax.typing import VariableDict
 
-from graph_mlgo.graph.embedding import GraphSAGENet
-
 if TYPE_CHECKING:
     from graph_mlgo.graph import Graph
+    from graph_mlgo.graph.embedding import GraphSAGENet
 
 
 def graphsage_loss(
     params: VariableDict,
-    model: GraphSAGENet,
+    model: "GraphSAGENet",
     h_in: jnp.ndarray,
     neighbor_indices: list[jnp.ndarray],
     u_idx: jnp.ndarray,
@@ -49,8 +48,8 @@ def graphsage_loss(
 def extract_neighborhood(
     *, graph: "Graph", batch: list[str], depth: int, num_neighbours: int
 ) -> tuple[np.ndarray, list[np.ndarray]]:
-    neighbourhood_per_depth: list[defaultdict[str, set]] = [
-        defaultdict(set) for _ in range(depth)
+    neighbourhood_per_depth: list[defaultdict[str, list[str]]] = [
+        defaultdict(list) for _ in range(depth)
     ]
     targets_per_depth: list[list[str]] = [[] for _ in range(depth)]
     targets_per_depth[depth - 1] = batch
@@ -60,13 +59,16 @@ def extract_neighborhood(
         current_targets = targets_per_depth[d]
 
         for node in current_targets:
-            neighbours = sample_neighbors(
-                graph=graph, node=node, num_neighbours=num_neighbours
-            )
-            neighbourhood_per_depth[d][node].update(neighbours)
+            # To handle case when batch has duplicates
+            if node not in neighbourhood_per_depth[d]:
+                neighbours = sample_neighbors(
+                    graph=graph, node=node, num_neighbours=num_neighbours
+                )
+                neighbourhood_per_depth[d][node].extend(neighbours)
 
         next_targets = list(current_targets)
         next_set = set(current_targets)
+
         for neighs in neighbourhood_per_depth[d].values():
             for n in sorted(list(neighs)):
                 if n not in next_set:
@@ -77,12 +79,16 @@ def extract_neighborhood(
         else:
             all_nodes = next_targets
 
-    node_to_idx = {node: idx for idx, node in enumerate(all_nodes)}
+    node_to_idx = {}
+    for idx, node in enumerate(all_nodes):
+        if node not in node_to_idx:
+            node_to_idx[node] = idx
 
     feat_dim = graph.nodes[all_nodes[0]].features.shape[0]
     features = np.zeros((len(all_nodes), feat_dim), dtype=np.float32)
-    for node in all_nodes:
-        idx = node_to_idx[node]
+
+    # First few elements in all_nodes may contain duplicates from `batch`
+    for idx, node in enumerate(all_nodes):
         features[idx] = graph.nodes[node].features
 
     neighbor_indices = []
@@ -113,16 +119,23 @@ def sample_neighbors(*, graph: "Graph", node: str, num_neighbours: int) -> list[
 
 
 def sample_training_batches(
-    graph: Graph, num_batches: int, batch_size: int, num_negatives: int
+    graph: "Graph", num_batches: int, batch_size: int, num_negatives: int
 ) -> list[tuple[list[str], list[str], list[list[str]]]]:
-    all_nodes = list(graph.nodes.keys())
-    nodes_with_neighbours = [
-        node for node in all_nodes if len(graph.nodes[node].neighbours) > 0
-    ]
+    all_nodes = [node for node, data in graph.nodes.items() if np.any(data.features)]
+    num_nodes = len(all_nodes)
+
+    if num_nodes < 2 + num_negatives:
+        return []
 
     adj_list = {node: [] for node in all_nodes}
     for src, dst in graph.edges.keys():
-        adj_list[src].append(dst)
+        if src != dst and src in adj_list and dst in adj_list:
+            adj_list[src].append(dst)
+
+    valid_starts = [node for node in all_nodes if len(adj_list[node]) > 0]
+
+    if not valid_starts:
+        return []
 
     batches = []
     for _ in range(num_batches):
@@ -130,19 +143,22 @@ def sample_training_batches(
         batch_v = []
         batch_neg = []
 
-        starts = np.random.choice(nodes_with_neighbours, size=batch_size, replace=True)
+        starts = np.random.choice(valid_starts, size=batch_size, replace=True)
 
         for u in starts:
-            neighbors = adj_list[u]
-            v = np.random.choice(neighbors)
+            v = np.random.choice(adj_list[u])
 
-            negatives = np.random.choice(
-                a=all_nodes, size=num_negatives, replace=True
-            ).tolist()
+            negatives = set()
+            while len(negatives) < num_negatives:
+                cand_idx = np.random.randint(0, num_nodes)
+                cand = all_nodes[cand_idx]
+
+                if cand != u and cand != v:
+                    negatives.add(cand)
 
             batch_u.append(u)
             batch_v.append(v)
-            batch_neg.append(negatives)
+            batch_neg.append(list(negatives))
 
         batches.append((batch_u, batch_v, batch_neg))
 

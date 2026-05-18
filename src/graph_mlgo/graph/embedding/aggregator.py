@@ -14,3 +14,8 @@ class MeanAggregator(Aggregator):
     @nn.compact
     def __call__(self, h_neighbors: jnp.ndarray) -> jnp.ndarray:
         return jnp.mean(h_neighbors, axis=-2)
+
+
+NAME_TO_CLASS = {
+    "mean": MeanAggregator,
+}
