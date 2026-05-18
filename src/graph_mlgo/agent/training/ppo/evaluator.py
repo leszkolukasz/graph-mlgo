@@ -7,7 +7,7 @@ import numpy as np
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
-from graph_mlgo.agent.types import RunningNorm
+from graph_mlgo.agent.training.types import RunningNorm
 from graph_mlgo.agent.utils import normalize
 
 

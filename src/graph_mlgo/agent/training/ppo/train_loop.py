@@ -14,16 +14,16 @@ from tqdm import tqdm
 
 import wandb
 from graph_mlgo.agent.config import PPOConfig
-from graph_mlgo.agent.evaluator import PPOEvaluator
 from graph_mlgo.agent.networks import PPOAgent
-from graph_mlgo.agent.trainer import PPOTrainer
-from graph_mlgo.agent.types import RunnerState
+from graph_mlgo.agent.training.ppo.evaluator import PPOEvaluator
+from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
+from graph_mlgo.agent.training.types import RunnerState
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import TrivialEmbedder
 
 RUNNING_STAT_WINDOW = 100
-CHECKPOINT_DIR = os.path.abspath("./models")
+CHECKPOINT_DIR = os.path.abspath("./models/ppo")
 
 
 def run_training(config: PPOConfig):

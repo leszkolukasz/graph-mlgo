@@ -2,14 +2,13 @@ import gymnasium as gym
 import jax
 import jax.numpy as jnp
 from datasets import Dataset
+from flax.typing import VariableDict
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
-from graph_mlgo.agent.types import Transition
+from graph_mlgo.agent.training.types import RunningNorm, Transition
 from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import Embedder
-
-from .types import RunningNorm
 
 
 def init_running_norm(shape: tuple[int, ...]) -> RunningNorm:
@@ -91,7 +90,7 @@ def compute_gae(
 
 
 def ppo_loss(
-    params: dict,
+    params: VariableDict,
     agent: PPOAgent,
     batch: Transition,
     advantages: jnp.ndarray,

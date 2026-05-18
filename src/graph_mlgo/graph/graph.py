@@ -6,7 +6,7 @@ import numpy as np
 from llvmlite import binding as llvm
 
 from graph_mlgo import cpp_bindings  # ty: ignore
-from graph_mlgo.graph.embedding import Embedder
+from graph_mlgo.graph.embedding.embedding import Embedder
 from graph_mlgo.ir import compile_module
 
 type Edge = tuple[str, str]

@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
-from graph_mlgo.agent.trainer import PPOTrainer
+from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import TrivialEmbedder
