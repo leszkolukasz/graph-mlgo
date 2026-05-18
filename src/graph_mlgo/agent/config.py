@@ -1,8 +1,10 @@
-from typing import Callable
 from dataclasses import dataclass
+from typing import Callable
+
 import flax.linen as nn
 
 from graph_mlgo.dataset.prepare import MAX_EDGES
+
 
 @dataclass
 class PPOConfig:

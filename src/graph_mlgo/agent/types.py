@@ -1,5 +1,7 @@
-import jax.numpy as jnp
 from typing import NamedTuple
+
+import jax.numpy as jnp
+
 
 class Transition(NamedTuple):
     obs: jnp.ndarray

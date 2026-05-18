@@ -1,8 +1,10 @@
 import jax
 import jax.numpy as jnp
 import numpy as np
-from graph_mlgo.agent.utils import normalize
+
 from graph_mlgo.agent.config import PPOConfig
+from graph_mlgo.agent.utils import normalize
+
 
 class PPOEvaluator:
     def __init__(self, config: PPOConfig, eval_env, agent):
@@ -15,7 +17,6 @@ class PPOEvaluator:
         eval_env = self.eval_env
         agent = self.agent
 
-
         @jax.jit
         def jax_act(params, obs_norm, obs, rng):
             obs_in = (
@@ -24,9 +25,9 @@ class PPOEvaluator:
                 else obs
             )
             rng, act_rng = jax.random.split(rng)
-            
+
             action, _, _ = agent.act(params, obs_in, act_rng)
-            
+
             return action, rng
 
         def evaluate(train_state, obs_norm, rng: jax.Array):
@@ -39,23 +40,23 @@ class PPOEvaluator:
             for _ in range(cfg.eval_horizon):
                 obs_jax = jnp.asarray(obs, dtype=jnp.float32)
                 action_jax, rng = jax_act(train_state.params, obs_norm, obs_jax, rng)
-                
+
                 action_np = np.asarray(action_jax)
-            
-                next_obs, reward, terminated, truncated, _ = eval_env.step(action_np)    
+
+                next_obs, reward, terminated, truncated, _ = eval_env.step(action_np)
                 done = np.logical_or(terminated, truncated).astype(np.float32)
 
                 episode_returns += reward
-                
+
                 completed_return = np.where(done > 0.0, episode_returns, 0.0)
                 total_completed_return += float(np.sum(completed_return))
                 total_completed_count += float(np.sum(done))
 
-                episode_returns *= (1.0 - done)
+                episode_returns *= 1.0 - done
                 obs = next_obs
 
             mean_return = total_completed_return / max(total_completed_count, 1.0)
-            
+
             return {
                 "eval_return": float(mean_return),
                 "eval_episodes": float(total_completed_count),

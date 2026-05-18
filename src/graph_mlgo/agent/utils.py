@@ -1,13 +1,15 @@
-from .types import RunningNorm
-import jax.numpy as jnp
 import gymnasium as gym
 import jax
+import jax.numpy as jnp
 from datasets import Dataset
 
-from graph_mlgo.graph.embedding import Embedder
-from graph_mlgo.env.LLVMInline import LLVMInlineEnv
-from graph_mlgo.agent.types import Transition
 from graph_mlgo.agent.config import PPOConfig
+from graph_mlgo.agent.types import Transition
+from graph_mlgo.env.LLVMInline import LLVMInlineEnv
+from graph_mlgo.graph.embedding import Embedder
+
+from .types import RunningNorm
+
 
 def init_running_norm(shape):
     return RunningNorm(
@@ -19,7 +21,7 @@ def init_running_norm(shape):
 
 def update_running_norm(norm: RunningNorm, x: jnp.ndarray) -> RunningNorm:
     batch_mean = x.mean(axis=0)
-    batch_s = jnp.sum((x - batch_mean)**2, axis=0)
+    batch_s = jnp.sum((x - batch_mean) ** 2, axis=0)
     old_s = norm.var * norm.count
 
     delta = batch_mean - norm.mean
@@ -45,26 +47,24 @@ def normalize(
 
     return y
 
-def make_env(dataset: Dataset, embedder: Embedder, num_envs: int, episode_length: int=1000):
+
+def make_env(
+    dataset: Dataset, embedder: Embedder, num_envs: int, episode_length: int = 1000
+):
     def make_single_env(idx: int):
         dataset_shard = dataset.shard(num_shards=num_envs, index=idx)
 
         env = LLVMInlineEnv(dataset=dataset_shard, embedder=embedder)
         env = gym.wrappers.TimeLimit(env, max_episode_steps=episode_length)
-        
+
         return env
 
-    env_fns = [
-        lambda i=i: make_single_env(idx=i) 
-        for i in range(num_envs)
-    ]
+    env_fns = [lambda i=i: make_single_env(idx=i) for i in range(num_envs)]
 
-    vec_env = gym.vector.AsyncVectorEnv(
-        env_fns=env_fns,
-        context="spawn"
-    )
+    vec_env = gym.vector.AsyncVectorEnv(env_fns=env_fns, context="spawn")
 
     return vec_env
+
 
 def compute_gae(traj: Transition, last_value, gamma, gae_lambda):
     def scan_gae(carry, t):
@@ -86,6 +86,7 @@ def compute_gae(traj: Transition, last_value, gamma, gae_lambda):
     targets = advantages + traj.value
     return advantages, targets
 
+
 def ppo_loss(
     params,
     agent,
@@ -102,13 +103,15 @@ def ppo_loss(
     if cfg.normalize_advantage:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-    log_ratio = jnp.clip(log_prob - batch.log_prob, -cfg.max_log_ratio, cfg.max_log_ratio)
+    log_ratio = jnp.clip(
+        log_prob - batch.log_prob, -cfg.max_log_ratio, cfg.max_log_ratio
+    )
     ratio = jnp.exp(log_ratio)
     unclipped = advantages * ratio
     clipped = jnp.clip(ratio, 1 - cfg.clip_eps, 1 + cfg.clip_eps) * advantages
     actor_loss = -jnp.minimum(unclipped, clipped).mean()
 
-    value_loss = jnp.mean((value - targets)**2)
+    value_loss = jnp.mean((value - targets) ** 2)
 
     entropy_loss = entropy.mean()
 

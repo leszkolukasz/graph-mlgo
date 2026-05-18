@@ -1,10 +1,12 @@
 from typing import Callable
-import jax.numpy as jnp
-import numpy as np
+
 import distrax
 import jax
+import jax.numpy as jnp
+import numpy as np
 from flax import linen as nn
 from flax.linen.initializers import orthogonal
+
 
 class CriticNet(nn.Module):
     hidden_sizes: tuple[int, ...]
@@ -16,13 +18,17 @@ class CriticNet(nn.Module):
         critic_head_init = orthogonal(1.0)
 
         value = nn.Dense(
-            self.hidden_sizes[0], kernel_init=hidden_init, bias_init=nn.initializers.zeros
-            )(obs)
+            self.hidden_sizes[0],
+            kernel_init=hidden_init,
+            bias_init=nn.initializers.zeros,
+        )(obs)
 
         value = self.activation(value)
 
         value = nn.Dense(
-            self.hidden_sizes[1], kernel_init=hidden_init, bias_init=nn.initializers.zeros
+            self.hidden_sizes[1],
+            kernel_init=hidden_init,
+            bias_init=nn.initializers.zeros,
         )(value)
 
         value = self.activation(value)
@@ -45,23 +51,31 @@ class ActorNet(nn.Module):
         actor_head_init = orthogonal(0.01)
 
         x = nn.Dense(
-            self.hidden_sizes[0], kernel_init=hidden_init, bias_init=nn.initializers.zeros
-            )(obs)
+            self.hidden_sizes[0],
+            kernel_init=hidden_init,
+            bias_init=nn.initializers.zeros,
+        )(obs)
 
         x = self.activation(x)
 
         x = nn.Dense(
-            self.hidden_sizes[1], kernel_init=hidden_init, bias_init=nn.initializers.zeros
+            self.hidden_sizes[1],
+            kernel_init=hidden_init,
+            bias_init=nn.initializers.zeros,
         )(x)
 
         x = self.activation(x)
 
         mean = nn.Dense(
-            self.action_dim, kernel_init=actor_head_init, bias_init=nn.initializers.zeros
+            self.action_dim,
+            kernel_init=actor_head_init,
+            bias_init=nn.initializers.zeros,
         )(x)
 
         log_std = nn.Dense(
-            self.action_dim, kernel_init=actor_head_init, bias_init=nn.initializers.zeros
+            self.action_dim,
+            kernel_init=actor_head_init,
+            bias_init=nn.initializers.zeros,
         )(x)
 
         log_std = jnp.clip(log_std, -20, 2)
@@ -102,14 +116,14 @@ class PPOAgent(nn.Module):
     def act(self, params, obs: jnp.ndarray, rng: jax.Array):
         mean, log_std = self.apply(params, obs, method=self.actor)
 
-        std = jnp.exp(log_std) # ty: ignore
+        std = jnp.exp(log_std)  # ty: ignore
         dist = distrax.MultivariateNormalDiag(mean, std)
 
         act = dist.sample(seed=rng)
         logp_act = dist.log_prob(act)
 
-        squashed_action, deterministic_squashed_action, logp_squashed_action = self._apply_squashing_function(
-            mean, act, logp_act
+        squashed_action, deterministic_squashed_action, logp_squashed_action = (
+            self._apply_squashing_function(mean, act, logp_act)
         )
 
         return squashed_action, deterministic_squashed_action, logp_squashed_action
@@ -119,19 +133,17 @@ class PPOAgent(nn.Module):
     ):
         mean, log_std = self.apply(params, obs, method=self.actor)
 
-        std = jnp.exp(log_std) # ty: ignore
+        std = jnp.exp(log_std)  # ty: ignore
         dist = distrax.MultivariateNormalDiag(mean, std)
 
         def unsquash(act):
-            return jnp.arctanh(jnp.clip(act, -1+1e-6, 1-1e-6))
+            return jnp.arctanh(jnp.clip(act, -1 + 1e-6, 1 - 1e-6))
 
         act = unsquash(squashed_action)
         log_prob = dist.log_prob(act)
         entropy = dist.entropy()
 
-        _, _, squashed_log_prob = self._apply_squashing_function(
-            mean, act, log_prob
-        )
+        _, _, squashed_log_prob = self._apply_squashing_function(mean, act, log_prob)
 
         return squashed_log_prob, entropy
 

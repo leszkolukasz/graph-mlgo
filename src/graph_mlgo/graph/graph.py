@@ -1,14 +1,16 @@
 from typing import Iterator
-from llvmlite import binding as llvm
-import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
 
-from graph_mlgo.ir import compile_module
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+from llvmlite import binding as llvm
+
+from graph_mlgo import cpp_bindings  # ty: ignore
 from graph_mlgo.graph.embedding import Embedder
-from graph_mlgo import cpp_bindings # ty: ignore
+from graph_mlgo.ir import compile_module
 
 type Edge = tuple[str, str]
+
 
 class Node:
     features: np.ndarray
@@ -25,7 +27,7 @@ class Node:
 
 class Graph:
     nodes: dict[str, Node]
-    edges: dict[Edge, int] # multiplicity of edges
+    edges: dict[Edge, int]  # multiplicity of edges
     module: llvm.ModuleRef
     node_height: dict[str, int]
 
@@ -61,7 +63,10 @@ class Graph:
         num_nodes = len(self.nodes)
         num_edges = sum(self.edges.values())
         num_unique_edges = len(self.edges)
-        feat= np.array([float(num_nodes), float(num_edges), float(num_unique_edges)], dtype=np.float32)
+        feat = np.array(
+            [float(num_nodes), float(num_edges), float(num_unique_edges)],
+            dtype=np.float32,
+        )
 
         assert len(feat) == Graph.get_global_embedding_dim()
         return feat
@@ -77,48 +82,45 @@ class Graph:
         # success = cpp_bindings.inline_edges(module_ptr, caller, callee)
 
         new_ir_text, success = cpp_bindings.inline_edges_safe(
-            str(self.module), 
-            caller, 
-            callee
+            str(self.module), caller, callee
         )
-        
+
         if success == 0:
             raise RuntimeError(f"Inlining failed for edge {edge}")
 
         self.module = llvm.parse_assembly(new_ir_text)
         self.module.verify()
-        
+
         self.edges.pop(edge, None)
         self.edges_by_callee[callee].discard(edge)
-        
+
         self._refresh_node_neighbours(caller)
         self._update_node_features(caller)
         self._update_node_features(callee)
-        
 
     def get_inline_order(self) -> Iterator[Edge]:
         visited = set()
-        ordered_edges = []        
+        ordered_edges = []
 
         def dfs(u):
             visited.add(u)
-            
+
             for v in self.nodes[u].neighbours:
                 if v not in visited:
                     dfs(v)
-            
+
             ordered_edges.extend(list(self.edges_by_callee.get(u, [])))
 
         for node_name in list(self.nodes.keys()):
             if node_name not in visited:
                 dfs(node_name)
-        
+
         return iter(ordered_edges)
 
     def _build_from_bitcode(self) -> None:
         for caller_func in self.module.functions:
             caller = caller_func.name
-            
+
             if caller not in self.nodes:
                 self.nodes[caller] = Node(caller)
 
@@ -129,11 +131,13 @@ class Graph:
                 for instr in block.instructions:
                     callee = self._get_instr_callee(instr)
                     if callee:
-                        assert isinstance(callee, str), f"Expected callee name as string, got {type(callee)}"
+                        assert isinstance(callee, str), (
+                            f"Expected callee name as string, got {type(callee)}"
+                        )
 
                         if callee not in self.nodes:
                             self.nodes[callee] = Node(callee)
-                        
+
                         edge: Edge = (caller, callee)
                         if edge not in self.edges:
                             self.edges[edge] = 1
@@ -143,7 +147,7 @@ class Graph:
 
     def _scc(self) -> None:
         components = self._find_sccs()
-        
+
         node_to_scc_id: dict[str, int] = {}
         for scc_id, component in enumerate(components):
             for node in component:
@@ -157,7 +161,7 @@ class Graph:
             caller_scc = node_to_scc_id.get(caller)
             callee_scc = node_to_scc_id.get(callee)
             return caller_scc != callee_scc or caller == callee
-        
+
         for caller, callee in self.edges:
             if should_keep_edge(caller, callee):
                 filtered_edges.append((caller, callee))
@@ -169,7 +173,7 @@ class Graph:
             for neighbour in node.neighbours:
                 if should_keep_edge(node_name, neighbour):
                     filtered_neighbours.add(neighbour)
-                    
+
             node.neighbours = filtered_neighbours
 
     def _find_sccs(self) -> list[set[str]]:
@@ -190,7 +194,7 @@ class Graph:
 
             node = self.nodes[node_name]
             h = 0
-            
+
             for neighbour in node.neighbours:
                 if neighbour not in time_in:
                     strong_connect(neighbour)
@@ -223,15 +227,17 @@ class Graph:
     def _get_instr_callee(self, instr) -> str | None:
         if instr.opcode not in ("call", "invoke"):
             return None
-        
+
         operands = list(instr.operands)
         if not operands:
             return None
-        
+
         callee_val = operands[-1]
         callee_name = callee_val.name
 
-        assert isinstance(callee_name, str), f"Expected callee name as string, got {type(callee_name)}"
+        assert isinstance(callee_name, str), (
+            f"Expected callee name as string, got {type(callee_name)}"
+        )
 
         if callee_name.startswith("llvm."):
             return None
@@ -269,11 +275,32 @@ class Graph:
 
         blocks = list(func.blocks)
         num_blocks = len(blocks)
-        
+
         num_instr = 0
         cond_blocks = 0
         simple_instr = 0
-        simple_ops = {"add", "fadd", "sub", "fsub", "mul", "fmul", "sdiv", "udiv", "fdiv", "srem", "urem", "frem", "and", "or", "xor", "shl", "lshr", "ashr", "icmp", "fcmp"}
+        simple_ops = {
+            "add",
+            "fadd",
+            "sub",
+            "fsub",
+            "mul",
+            "fmul",
+            "sdiv",
+            "udiv",
+            "fdiv",
+            "srem",
+            "urem",
+            "frem",
+            "and",
+            "or",
+            "xor",
+            "shl",
+            "lshr",
+            "ashr",
+            "icmp",
+            "fcmp",
+        }
         for block in blocks:
             instrs = list(block.instructions)
             num_instr += len(instrs)
@@ -285,9 +312,13 @@ class Graph:
 
         is_recursive = 1.0 if name in node.neighbours else 0.0
         in_deg = len(self.edges_by_callee.get(name, []))
-        in_deg_with_multiplicity = sum(self.edges.get(edge, 0) for edge in self.edges_by_callee.get(name, []))
+        in_deg_with_multiplicity = sum(
+            self.edges.get(edge, 0) for edge in self.edges_by_callee.get(name, [])
+        )
         out_deg = len(node.neighbours)
-        out_deg_with_multiplicity = sum(self.edges.get((name, neighbour), 0) for neighbour in node.neighbours)
+        out_deg_with_multiplicity = sum(
+            self.edges.get((name, neighbour), 0) for neighbour in node.neighbours
+        )
 
         node.features[0] = is_recursive
         node.features[1] = float(in_deg)
@@ -316,26 +347,28 @@ class Graph:
         pos = nx.spring_layout(G, seed=42, k=5.0)
 
         plt.figure(figsize=(12, 8))
-        
+
         nx.draw_networkx_nodes(G, pos, node_size=2000, node_color="lightblue")
         nx.draw_networkx_labels(G, pos, font_size=10, font_family="sans-serif")
 
         nx.draw_networkx_edges(
-            G, pos, 
-            arrowstyle="-|>", 
+            G,
+            pos,
+            arrowstyle="-|>",
             arrowsize=30,
-            edge_color="gray", 
+            edge_color="gray",
             width=1.5,
             connectionstyle="arc3,rad=0.1",
             min_source_margin=25,
-            min_target_margin=25
+            min_target_margin=25,
         )
 
-        edge_labels = {(u, v): f"x{d["weight"]}" for u, v, d in G.edges(data=True)}
+        edge_labels = {(u, v): f"x{d['weight']}" for u, v, d in G.edges(data=True)}
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color="red")
 
         plt.axis("off")
         plt.show()
+
 
 def run_test_visualization():
     longer_ir = """
@@ -375,11 +408,12 @@ def run_test_visualization():
     mod = llvm.parse_assembly(longer_ir)
     bitcode = mod.as_bitcode()
 
-    graph = Graph(bitcode)    
+    graph = Graph(bitcode)
     graph.visualize()
 
     graph.inline(("aggregate_results", "transform_data"))
     graph.visualize()
+
 
 if __name__ == "__main__":
     run_test_visualization()

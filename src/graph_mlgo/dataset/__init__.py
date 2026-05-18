@@ -1,1 +1,1 @@
-from .ComPile import *
+from .ComPile import * # noqa

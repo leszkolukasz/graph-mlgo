@@ -1,8 +1,9 @@
-from loguru import logger
+import multiprocessing
+
+import jax
 import llvmlite.binding as llvm
 import llvmlite.binding.ffi as ffi
-import multiprocessing
-import jax
+from loguru import logger
 
 if multiprocessing.current_process().name == "MainProcess":
     logger.info(f"llvmlite LLVM version: {llvm.llvm_version_info}")

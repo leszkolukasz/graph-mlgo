@@ -211,5 +211,6 @@ pyrightconfig.json
 data/
 .direnv
 logs
-models
+models*
 wandb
+notes.txt
