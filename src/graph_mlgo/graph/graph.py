@@ -7,22 +7,10 @@ from llvmlite import binding as llvm
 
 from graph_mlgo import cpp_bindings  # ty: ignore
 from graph_mlgo.graph.embedding.embedding import Embedder
+from graph_mlgo.graph.node import Node
 from graph_mlgo.ir import compile_module
 
 type Edge = tuple[str, str]
-
-
-class Node:
-    features: np.ndarray
-
-    def __init__(self, name: str):
-        self.name: str = name
-        self.neighbours: set[str] = set()
-        self.features: np.ndarray = np.zeros(Node.get_features_dim(), dtype=np.float32)
-
-    @staticmethod
-    def get_features_dim() -> int:
-        return 10
 
 
 class Graph:
@@ -321,15 +309,15 @@ class Graph:
         )
 
         node.features[0] = is_recursive
-        node.features[1] = float(in_deg)
-        node.features[2] = float(in_deg_with_multiplicity)
-        node.features[3] = float(out_deg)
-        node.features[4] = float(out_deg_with_multiplicity)
-        node.features[5] = float(num_instr)
-        node.features[6] = float(num_blocks)
-        node.features[7] = float(cond_blocks)
-        node.features[8] = float(simple_instr)
-        node.features[9] = float(self.node_height[node.name])
+        node.features[1] = np.log1p(in_deg)
+        node.features[2] = (in_deg_with_multiplicity / max(in_deg, 1)) - 1.0
+        node.features[3] = np.log1p(out_deg)
+        node.features[4] = (out_deg_with_multiplicity / max(out_deg, 1)) - 1.0
+        node.features[5] = np.log1p(num_instr)
+        node.features[6] = np.log1p(num_blocks)
+        node.features[7] = cond_blocks / max(num_blocks, 1)
+        node.features[8] = simple_instr / max(num_instr, 1)
+        node.features[9] = np.log1p(self.node_height[node.name])
 
     def _compute_node_features(self) -> None:
         for name in self.nodes:

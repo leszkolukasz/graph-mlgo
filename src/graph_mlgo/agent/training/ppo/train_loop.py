@@ -20,15 +20,28 @@ from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.training.types import RunnerState
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph.embedding import TrivialEmbedder
+from graph_mlgo.graph import Node
+from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 
 RUNNING_STAT_WINDOW = 100
 CHECKPOINT_DIR = os.path.abspath("./models/ppo")
 
 
-def run_training(config: PPOConfig):
+def run_training(config: PPOConfig | None):
+    if config is None:
+        config = PPOConfig.from_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
+        logger.info(f"Loaded config from checkpoint: {config}")
+    else:
+        logger.info(f"Using provided config: {config}")
+
     dataset = ComPileDataset(config.dataset_path)
-    embedder = TrivialEmbedder()
+
+    if config.embedder_path is None:
+        embedder = TrivialEmbedder()
+    else:
+        embedder = GraphSAGEEmbedder.load(
+            checkpoint_path=config.embedder_path, node_feat_dim=Node.get_features_dim()
+        )
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -56,7 +69,6 @@ def run_training(config: PPOConfig):
 
     agent = PPOAgent(
         hidden_sizes=config.hidden_sizes,
-        activation=config.activation,
     )
 
     trainer = PPOTrainer(config, env, agent)
@@ -158,6 +170,8 @@ def run_training(config: PPOConfig):
         wandb.log(step_log, step=update_idx)
 
         if do_checkpoint:
+            config.to_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
+
             jax.tree_util.tree_map(
                 lambda x: (
                     x.block_until_ready() if hasattr(x, "block_until_ready") else x

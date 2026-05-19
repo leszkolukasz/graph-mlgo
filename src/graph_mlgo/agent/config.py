@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Callable
+from pathlib import Path
 
-import flax.linen as nn
+import yaml
 
 from graph_mlgo.dataset.prepare import MAX_EDGES
 
@@ -9,6 +9,7 @@ from graph_mlgo.dataset.prepare import MAX_EDGES
 @dataclass
 class PPOConfig:
     dataset_path: str
+    embedder_path: str | None = None
 
     total_timesteps: int = 10_000_000
     num_envs: int = 1
@@ -27,7 +28,7 @@ class PPOConfig:
 
     episode_length: int = MAX_EDGES
     hidden_sizes: tuple[int, ...] = (256, 256)
-    activation: Callable = nn.tanh
+    # activation: Callable = nn.tanh
     anneal_lr: bool = True
 
     normalize_advantage: bool = True
@@ -51,3 +52,14 @@ class PPOConfig:
         self.batch_size = self.num_envs * self.rollout_length
         self.num_minibatches = self.batch_size // self.minibatch_size
         self.num_updates = self.total_timesteps // self.batch_size
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "PPOConfig":
+        with open(path, "r") as f:
+            data = yaml.safe_load(f)
+
+        return cls(**data)
+
+    def to_file(self, path: str | Path) -> None:
+        with open(path, "w") as f:
+            yaml.dump(self.__dict__, f)

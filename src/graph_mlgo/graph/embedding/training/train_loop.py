@@ -2,6 +2,7 @@ import datetime
 import os
 import sys
 import time
+from dataclasses import asdict
 from typing import cast
 
 import jax
@@ -11,6 +12,7 @@ from loguru import logger
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from tqdm import tqdm
 
+import wandb
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding import GraphSAGENet
@@ -24,9 +26,16 @@ from graph_mlgo.graph.embedding.utils import sample_training_batches
 
 RUNNING_STAT_WINDOW = 100
 CHECKPOINT_DIR = os.path.abspath("./models/graphsage")
+ENABLE_WANDB = False
 
 
-def run_training(config: GraphSageConfig):
+def run_training(config: GraphSageConfig | None):
+    if config is None:
+        config = GraphSageConfig.from_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
+        logger.info(f"Loaded config from checkpoint: {config}")
+    else:
+        logger.info(f"Using provided config: {config}")
+
     dataset = ComPileDataset(config.dataset_path)
 
     logger.info(
@@ -130,7 +139,8 @@ def run_training(config: GraphSageConfig):
                     "graph_idx": graph_idx,
                 }
 
-                # wandb.log(step_log, step=update_idx)
+                if ENABLE_WANDB:
+                    wandb.log(step_log, step=update_idx)
 
                 postfix_dict = {
                     "loss": f"{float(metrics['loss']):.4f}",
@@ -146,6 +156,8 @@ def run_training(config: GraphSageConfig):
                 )
 
                 if do_checkpoint and update_idx > start_update:
+                    config.to_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
+
                     jax.tree_util.tree_map(
                         lambda x: (
                             x.block_until_ready()
@@ -168,6 +180,7 @@ if __name__ == "__main__":
     config = GraphSageConfig(
         dataset_path="./data/ComPile-1.0GB",
     )
+    # config = None
 
     if len(sys.argv) > 1:
         run_id = str(sys.argv[1])
@@ -176,12 +189,13 @@ if __name__ == "__main__":
         run_id = f"graphsage_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         logger.info(f"No run id provided. Using timestamp: {run_id}")
 
-    # wandb.init(
-    #     project="rl",
-    #     name=run_id,
-    #     id=run_id,
-    #     resume="allow",
-    #     config=asdict(config),
-    # )
+    if ENABLE_WANDB:
+        wandb.init(
+            project="rl",
+            name=run_id,
+            id=run_id,
+            resume="allow",
+            config=asdict(config),
+        )
 
     run_training(config)

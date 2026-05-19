@@ -1,13 +1,16 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import orbax.checkpoint as ocp
 from flax import linen as nn
 from flax.typing import VariableDict
+from loguru import logger
 
-from graph_mlgo.graph.embedding.aggregator import Aggregator
+from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS, Aggregator
 from graph_mlgo.graph.embedding.config import GraphSageConfig
 from graph_mlgo.graph.embedding.utils import extract_neighborhood
 
@@ -29,7 +32,7 @@ class Embedder(ABC):
         for block in caller_func.blocks:
             for instr in block.instructions:
                 if instr.opcode in ("call", "invoke"):
-                    ops = list(instr.operands)
+                    ops = list(instr.ope10000rands)
                     if ops and getattr(ops[-1], "name", "") == callee:
                         args = ops[:-1]
                         total_args += len(args)
@@ -73,7 +76,7 @@ class GraphSAGENet(nn.Module):
     hidden_dim: int
     output_dim: int
     aggregator_cls: type[Aggregator]
-    activation: Callable = nn.relu
+    activation: Callable = nn.sigmoid
 
     def setup(self):
         self.W = [
@@ -87,6 +90,8 @@ class GraphSAGENet(nn.Module):
         self.aggregators = [
             self.aggregator_cls(name=f"agg_{d}") for d in range(self.depth)
         ]
+
+        self.norms = [nn.LayerNorm(name=f"norm_{d}") for d in range(self.depth - 1)]
 
     # h: (N, node_feat_dim)
     # neighbor_indices: list of (num_targets, num_neighbours, hidden_dim)
@@ -108,6 +113,7 @@ class GraphSAGENet(nn.Module):
             h_new = self.W[d](h_concat)
 
             if d < self.depth - 1:
+                h_new = self.norms[d](h_new)
                 h_new = self.activation(h_new)
 
             h_new = h_new / jnp.maximum(
@@ -143,6 +149,9 @@ class GraphSAGEEmbedder(Embedder):
     def _embed(self, edge: "Edge", graph: "Graph") -> np.ndarray:
         u, v = edge
 
+        feat_u = graph.nodes[u].features
+        feat_v = graph.nodes[v].features
+
         feat_np, indices_np = extract_neighborhood(
             graph=graph,
             batch=[u, v],
@@ -157,7 +166,49 @@ class GraphSAGEEmbedder(Embedder):
         emb = np.asarray(self._jit_apply(feat_jax, indices_jax))
         assert emb.shape[0] == 2
 
-        return np.concatenate([emb[0], emb[1]])
+        return np.concatenate([feat_u, feat_v, emb[0], emb[1]])
 
     def _get_embedding_dim(self, node_feat_dim: int) -> int:
-        return 2 * self.net.output_dim
+        return 2 * self.net.output_dim + 2 * node_feat_dim
+
+    @classmethod
+    def load(
+        cls,
+        checkpoint_path: str,
+        node_feat_dim: int,
+    ) -> "GraphSAGEEmbedder":
+        cp_path = Path(checkpoint_path)
+
+        config_path = cp_path / "config.yaml"
+        config = GraphSageConfig.from_file(config_path)
+
+        logger.info(f"Loaded GraphSAGE config: {config}")
+
+        net = GraphSAGENet(
+            depth=config.depth,
+            hidden_dim=config.hidden_dim,
+            output_dim=config.output_dim,
+            aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
+        )
+
+        rng = jax.random.PRNGKey(config.seed)
+        dummy_h = jnp.zeros((1, node_feat_dim))
+        dummy_indices = [
+            jnp.zeros((1, config.num_neighbours), dtype=jnp.int32)
+            for _ in range(config.depth)
+        ]
+
+        variables = net.init(rng, dummy_h, dummy_indices)
+        empty_params = variables["params"]
+
+        mngr = ocp.CheckpointManager(checkpoint_path)
+        latest_step = mngr.latest_step()
+
+        if latest_step is None:
+            raise FileNotFoundError(f"Checkpoint not found in {checkpoint_path}")
+
+        restored_params = mngr.restore(
+            latest_step, args=ocp.args.PyTreeRestore(item=empty_params)
+        )
+
+        return cls(net=net, params=restored_params, config=config)

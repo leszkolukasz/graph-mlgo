@@ -13,14 +13,29 @@ from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph.embedding import TrivialEmbedder
+from graph_mlgo.graph import Node
+from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 from graph_mlgo.graph.graph import Graph
 from graph_mlgo.ir import compile_module
 
 
-def run_benchmark(config: PPOConfig, checkpoint_dir: str):
+def run_benchmark(checkpoint_dir: str):
+    config = PPOConfig.from_file(os.path.join(checkpoint_dir, "config.yaml"))
+    logger.info(f"Loaded config from checkpoint: {config}")
+
     dataset = ComPileDataset(config.dataset_path)
-    embedder = TrivialEmbedder()
+
+    if config.embedder_path is None:
+        embedder = TrivialEmbedder()
+    else:
+        embedder = GraphSAGEEmbedder.load(
+            checkpoint_path=config.embedder_path, node_feat_dim=Node.get_features_dim()
+        )
+
+    logger.info(
+        f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
+    )
+    logger.info(f"Using embedder: {embedder.__class__.__name__}")
 
     dummy_env = make_env(
         dataset=dataset.test,
@@ -30,7 +45,6 @@ def run_benchmark(config: PPOConfig, checkpoint_dir: str):
     )
     agent = PPOAgent(
         hidden_sizes=config.hidden_sizes,
-        activation=config.activation,
     )
     trainer = PPOTrainer(config, dummy_env, agent)
 
@@ -117,10 +131,5 @@ def run_benchmark(config: PPOConfig, checkpoint_dir: str):
 
 
 if __name__ == "__main__":
-    config = PPOConfig(
-        dataset_path="./data/ComPile-1.0GB",
-        hidden_sizes=(128, 128),
-    )
-
-    checkpoint_dir = "./models"
-    run_benchmark(config, checkpoint_dir)
+    checkpoint_dir = "./models/ppo"
+    run_benchmark(checkpoint_dir)
