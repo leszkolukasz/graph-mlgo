@@ -3,7 +3,6 @@ import os
 import sys
 import time
 from dataclasses import asdict
-from typing import cast
 
 import jax
 import numpy as np
@@ -14,17 +13,15 @@ from tqdm import tqdm
 
 import wandb
 from graph_mlgo.agent.config import PPOConfig
-from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.evaluator import PPOEvaluator
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
-from graph_mlgo.agent.training.types import RunnerState
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph import Node
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 
 RUNNING_STAT_WINDOW = 100
 CHECKPOINT_DIR = os.path.abspath("./models/ppo")
+ENABLE_WANDB = False
 
 
 def run_training(config: PPOConfig | None):
@@ -39,9 +36,7 @@ def run_training(config: PPOConfig | None):
     if config.embedder_path is None:
         embedder = TrivialEmbedder()
     else:
-        embedder = GraphSAGEEmbedder.load(
-            checkpoint_path=config.embedder_path, node_feat_dim=Node.get_features_dim()
-        )
+        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path)
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -67,35 +62,20 @@ def run_training(config: PPOConfig | None):
         episode_length=config.episode_length,
     )
 
-    agent = PPOAgent(
-        hidden_sizes=config.hidden_sizes,
-    )
-
-    trainer = PPOTrainer(config, env, agent)
-    evaluator = PPOEvaluator(config, eval_env, agent)
+    trainer, runner_state, start_update = PPOTrainer.load(env, CHECKPOINT_DIR, config)
+    evaluator = PPOEvaluator(config, eval_env, trainer.agent)
     update_fn = trainer.make_update_fn()
     eval_fn = evaluator.make_eval_fn()
 
     options = CheckpointManagerOptions(max_to_keep=3, create=True)
     mngr = CheckpointManager(CHECKPOINT_DIR, options=options)
 
-    rng = jax.random.PRNGKey(config.seed)
-    rng, train_rng, eval_rng = jax.random.split(rng, 3)
+    eval_rng = jax.random.PRNGKey(config.seed + 1)
+    eval_rng, _ = jax.random.split(eval_rng, 2)
 
     start = time.time()
-    runner_state = trainer.init_runner(train_rng)
-    start_update = 0
-
-    latest_step = mngr.latest_step()
-    if latest_step is not None:
-        logger.info(f"Found checkpoint at update step {latest_step}. Restoring...")
-        runner_state = cast(
-            RunnerState,
-            mngr.restore(
-                latest_step, args=orbax.checkpoint.args.PyTreeRestore(item=runner_state)
-            ),
-        )
-        start_update = latest_step + 1
+    if start_update > 0:
+        logger.info(f"Found checkpoint. Resuming from update {start_update}.")
     else:
         logger.info(
             "No checkpoints found in the folder. Starting training from scratch."
@@ -167,7 +147,8 @@ def run_training(config: PPOConfig | None):
             last_eval_return = current_eval_return
             step_log["eval/return"] = current_eval_return
 
-        wandb.log(step_log, step=update_idx)
+        if ENABLE_WANDB:
+            wandb.log(step_log, step=update_idx)
 
         if do_checkpoint:
             config.to_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
@@ -192,19 +173,24 @@ def run_training(config: PPOConfig | None):
 
 if __name__ == "__main__":
     config = PPOConfig(
-        dataset_path="./data/ComPile-1.0GB", num_envs=1, hidden_sizes=(128, 128)
+        dataset_path="./data/ComPile-1.0GB",
+        embedder_path="./models/graphsage",
+        num_envs=1,
+        hidden_sizes=(128, 128),
     )
 
     if len(sys.argv) > 1:
         run_id = str(sys.argv[1])
         logger.info(f"Run id: {run_id}")
+        assert ENABLE_WANDB, "WandB must be enabled to use run ids."
     else:
         run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"No run id provided. Using timestamp: {run_id}")
 
-    wandb.init(
-        project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
-    )
+    if ENABLE_WANDB:
+        wandb.init(
+            project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
+        )
 
     result = run_training(config)
 

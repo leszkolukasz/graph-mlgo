@@ -1,17 +1,21 @@
+from typing import TYPE_CHECKING
+
 import gymnasium as gym
 import jax
 import jax.numpy as jnp
 from datasets import Dataset
 from flax.typing import VariableDict
 
-from graph_mlgo.agent.config import PPOConfig
-from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.types import RunningNorm, Transition
 from graph_mlgo.env.LLVMInline import LLVMInlineEnv
-from graph_mlgo.graph.embedding import Embedder
+
+if TYPE_CHECKING:
+    from graph_mlgo.agent.config import PPOConfig
+    from graph_mlgo.agent.networks import PPOAgent
+    from graph_mlgo.graph.embedding import Embedder
 
 
-def init_running_norm(shape: tuple[int, ...]) -> RunningNorm:
+def init_running_norm(shape: tuple[int, ...]) -> "RunningNorm":
     return RunningNorm(
         mean=jnp.zeros(shape, dtype=jnp.float32),
         var=jnp.ones(shape, dtype=jnp.float32),
@@ -19,7 +23,7 @@ def init_running_norm(shape: tuple[int, ...]) -> RunningNorm:
     )
 
 
-def update_running_norm(norm: RunningNorm, x: jnp.ndarray) -> RunningNorm:
+def update_running_norm(norm: "RunningNorm", x: jnp.ndarray) -> "RunningNorm":
     batch_mean = x.mean(axis=0)
     batch_s = jnp.sum((x - batch_mean) ** 2, axis=0)
     old_s = norm.var * norm.count
@@ -36,7 +40,7 @@ def update_running_norm(norm: RunningNorm, x: jnp.ndarray) -> RunningNorm:
 
 def normalize(
     x: jnp.ndarray,
-    norm: RunningNorm,
+    norm: "RunningNorm",
     eps: float = 1e-6,
     clip: float | None = None,
 ) -> jnp.ndarray:
@@ -49,7 +53,7 @@ def normalize(
 
 
 def make_env(
-    dataset: Dataset, embedder: Embedder, num_envs: int, episode_length: int = 1000
+    dataset: Dataset, embedder: "Embedder", num_envs: int, episode_length: int = 1000
 ) -> gym.Env:
     def make_single_env(idx: int):
         dataset_shard = dataset.shard(num_shards=num_envs, index=idx)
@@ -67,7 +71,7 @@ def make_env(
 
 
 def compute_gae(
-    traj: Transition, last_value: jnp.ndarray, gamma: float, gae_lambda: float
+    traj: "Transition", last_value: jnp.ndarray, gamma: float, gae_lambda: float
 ):
     def scan_gae(carry: tuple[jnp.ndarray, jnp.ndarray], t: int):
         gae, next_value = carry
@@ -91,11 +95,11 @@ def compute_gae(
 
 def ppo_loss(
     params: VariableDict,
-    agent: PPOAgent,
-    batch: Transition,
+    agent: "PPOAgent",
+    batch: "Transition",
     advantages: jnp.ndarray,
     targets: jnp.ndarray,
-    cfg: PPOConfig,
+    cfg: "PPOConfig",
 ) -> tuple[jnp.ndarray, tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
     log_prob, entropy = agent.get_action_log_prob_and_entropy(
         params, batch.obs, batch.action

@@ -1,4 +1,4 @@
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -6,9 +6,12 @@ import numpy as np
 from llvmlite import binding as llvm
 
 from graph_mlgo import cpp_bindings  # ty: ignore
-from graph_mlgo.graph.embedding.embedding import Embedder
+from graph_mlgo.graph.embedding.constants import GLOBAL_FEATURES_DIM
 from graph_mlgo.graph.node import Node
 from graph_mlgo.ir import compile_module
+
+if TYPE_CHECKING:
+    from graph_mlgo.graph.embedding.embedding import Embedder
 
 type Edge = tuple[str, str]
 
@@ -44,7 +47,7 @@ class Graph:
     def calc_native_size(self) -> int:
         return compile_module(str(self.module), enable_inlining=False)[0]
 
-    def get_edge_embedding(self, edge: Edge, embedder: Embedder) -> np.ndarray:
+    def get_edge_embedding(self, edge: Edge, embedder: "Embedder") -> np.ndarray:
         return embedder.embed(edge, self)
 
     def get_global_features(self) -> np.ndarray:
@@ -56,12 +59,8 @@ class Graph:
             dtype=np.float32,
         )
 
-        assert len(feat) == Graph.get_global_embedding_dim()
+        assert len(feat) == GLOBAL_FEATURES_DIM
         return feat
-
-    @staticmethod
-    def get_global_embedding_dim() -> int:
-        return 3
 
     def inline(self, edge: Edge) -> None:
         caller, callee = edge

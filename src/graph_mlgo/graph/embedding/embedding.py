@@ -1,17 +1,16 @@
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import orbax.checkpoint as ocp
 from flax import linen as nn
 from flax.typing import VariableDict
-from loguru import logger
 
-from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS, Aggregator
+from graph_mlgo.constants import MAX_NODES
+from graph_mlgo.graph.embedding.aggregator import Aggregator
 from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.constants import GLOBAL_FEATURES_DIM, NODE_FEATURES_DIM
 from graph_mlgo.graph.embedding.utils import extract_neighborhood
 
 if TYPE_CHECKING:
@@ -21,8 +20,9 @@ if TYPE_CHECKING:
 class Embedder(ABC):
     def embed(self, edge: "Edge", graph: "Graph") -> np.ndarray:
         global_feat = graph.get_global_features()
-        node_feat = self._embed(edge, graph)
+        edge_embed = self._embed(edge, graph)
         edge_mult = np.array([graph.edges[edge]], dtype=np.float32)
+        edge_mult = np.log1p(edge_mult)
 
         caller, callee = edge
         total_args = 0
@@ -32,7 +32,7 @@ class Embedder(ABC):
         for block in caller_func.blocks:
             for instr in block.instructions:
                 if instr.opcode in ("call", "invoke"):
-                    ops = list(instr.ope10000rands)
+                    ops = list(instr.operands)
                     if ops and getattr(ops[-1], "name", "") == callee:
                         args = ops[:-1]
                         total_args += len(args)
@@ -45,17 +45,17 @@ class Embedder(ABC):
             dtype=np.float32,
         )
 
-        return np.concatenate([global_feat, node_feat, edge_mult, const_ratio])
+        return np.concatenate([global_feat, edge_embed, edge_mult, const_ratio])
 
-    def get_embedding_dim(self, node_feat_dim: int, global_feat_dim: int) -> int:
-        return self._get_embedding_dim(node_feat_dim) + global_feat_dim + 2
+    def get_embedding_dim(self) -> int:
+        return self._get_embedding_dim() + GLOBAL_FEATURES_DIM + 2
 
     @abstractmethod
     def _embed(self, edge: "Edge", graph: "Graph") -> np.ndarray:
         pass
 
     @abstractmethod
-    def _get_embedding_dim(self, node_feat_dim: int) -> int:
+    def _get_embedding_dim(self) -> int:
         pass
 
 
@@ -67,8 +67,8 @@ class TrivialEmbedder(Embedder):
 
         return np.concatenate([feat_u, feat_v])
 
-    def _get_embedding_dim(self, node_feat_dim: int) -> int:
-        return 2 * node_feat_dim
+    def _get_embedding_dim(self) -> int:
+        return 2 * NODE_FEATURES_DIM
 
 
 class GraphSAGENet(nn.Module):
@@ -139,6 +139,7 @@ class GraphSAGEEmbedder(Embedder):
     ):
         self.net = net
         self.params = params
+        self.config = config
 
         def _apply(h_in: jnp.ndarray, neigh_indices: list[jnp.ndarray]) -> jnp.ndarray:
             return self.net.apply(self.params, h_in, neigh_indices)  # ty: ignore
@@ -158,57 +159,52 @@ class GraphSAGEEmbedder(Embedder):
             depth=self.config.depth,
             num_neighbours=self.config.num_neighbours,
         )
+
+        current_num_nodes = feat_np.shape[0]
+
+        if current_num_nodes > MAX_NODES:
+            raise ValueError(
+                f"Subgraph exceeds MAX_NODES: {current_num_nodes} > {MAX_NODES}"
+            )
+
+        pad_size = MAX_NODES - current_num_nodes
+
+        feat_np_padded = np.pad(feat_np, ((0, pad_size), (0, 0)), mode="constant")
+
+        indices_np_padded = []
+        for ind in indices_np:
+            num_targets = ind.shape[0]
+            pad_targets = MAX_NODES - num_targets
+
+            ind_padded = np.pad(
+                ind, ((0, pad_targets), (0, 0)), mode="constant", constant_values=0
+            )
+            indices_np_padded.append(ind_padded)
+
         feat_jax, indices_jax = (
-            jnp.asarray(feat_np, dtype=jnp.float32),
-            [jnp.asarray(ind, dtype=jnp.int32) for ind in indices_np],
+            jnp.asarray(feat_np_padded, dtype=jnp.float32),
+            [jnp.asarray(ind, dtype=jnp.int32) for ind in indices_np_padded],
         )
 
         emb = np.asarray(self._jit_apply(feat_jax, indices_jax))
-        assert emb.shape[0] == 2
+        # assert emb.shape[0] == 2
 
         return np.concatenate([feat_u, feat_v, emb[0], emb[1]])
 
-    def _get_embedding_dim(self, node_feat_dim: int) -> int:
-        return 2 * self.net.output_dim + 2 * node_feat_dim
+    def _get_embedding_dim(self) -> int:
+        return 2 * self.net.output_dim + 2 * NODE_FEATURES_DIM
 
     @classmethod
     def load(
         cls,
         checkpoint_path: str,
-        node_feat_dim: int,
     ) -> "GraphSAGEEmbedder":
-        cp_path = Path(checkpoint_path)
+        from graph_mlgo.graph.embedding.training.trainer import GraphSAGETrainer
 
-        config_path = cp_path / "config.yaml"
-        config = GraphSageConfig.from_file(config_path)
+        trainer, runner_state, _ = GraphSAGETrainer.load(checkpoint_path)
 
-        logger.info(f"Loaded GraphSAGE config: {config}")
-
-        net = GraphSAGENet(
-            depth=config.depth,
-            hidden_dim=config.hidden_dim,
-            output_dim=config.output_dim,
-            aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
+        return cls(
+            net=trainer.model,
+            params=runner_state.train_state.params,
+            config=trainer.config,
         )
-
-        rng = jax.random.PRNGKey(config.seed)
-        dummy_h = jnp.zeros((1, node_feat_dim))
-        dummy_indices = [
-            jnp.zeros((1, config.num_neighbours), dtype=jnp.int32)
-            for _ in range(config.depth)
-        ]
-
-        variables = net.init(rng, dummy_h, dummy_indices)
-        empty_params = variables["params"]
-
-        mngr = ocp.CheckpointManager(checkpoint_path)
-        latest_step = mngr.latest_step()
-
-        if latest_step is None:
-            raise FileNotFoundError(f"Checkpoint not found in {checkpoint_path}")
-
-        restored_params = mngr.restore(
-            latest_step, args=ocp.args.PyTreeRestore(item=empty_params)
-        )
-
-        return cls(net=net, params=restored_params, config=config)

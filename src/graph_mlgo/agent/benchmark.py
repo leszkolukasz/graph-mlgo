@@ -13,7 +13,6 @@ from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph import Node
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 from graph_mlgo.graph.graph import Graph
 from graph_mlgo.ir import compile_module
@@ -28,9 +27,7 @@ def run_benchmark(checkpoint_dir: str):
     if config.embedder_path is None:
         embedder = TrivialEmbedder()
     else:
-        embedder = GraphSAGEEmbedder.load(
-            checkpoint_path=config.embedder_path, node_feat_dim=Node.get_features_dim()
-        )
+        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path)
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."

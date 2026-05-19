@@ -3,7 +3,7 @@ from pathlib import Path
 
 import yaml
 
-from graph_mlgo.dataset.prepare import MAX_EDGES
+from graph_mlgo.constants import MAX_EDGES
 
 
 @dataclass
@@ -16,10 +16,10 @@ class PPOConfig:
 
     rollout_length: int = 1024
     update_epochs: int = 4
-    minibatch_size: int = 512
+    minibatch_size: int = 256
 
     lr: float = 1e-4
-    gamma: float = 0.99
+    gamma: float = 0.90
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
     vf_coef: float = 0.5
@@ -46,7 +46,7 @@ class PPOConfig:
     eval_num_envs: int = 1
     eval_horizon: int = 1000
 
-    seed: int = 0
+    seed: int = 42
 
     def __post_init__(self):
         self.batch_size = self.num_envs * self.rollout_length

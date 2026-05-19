@@ -3,7 +3,6 @@ import os
 import sys
 import time
 from dataclasses import asdict
-from typing import cast
 
 import jax
 import numpy as np
@@ -15,11 +14,8 @@ from tqdm import tqdm
 import wandb
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph import Graph
-from graph_mlgo.graph.embedding import GraphSAGENet
-from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
 from graph_mlgo.graph.embedding.config import GraphSageConfig
 from graph_mlgo.graph.embedding.training.trainer import (
-    GraphSAGERunnerState,
     GraphSAGETrainer,
 )
 from graph_mlgo.graph.embedding.utils import sample_training_batches
@@ -46,36 +42,14 @@ def run_training(config: GraphSageConfig | None):
         f"Batch size (u,v pairs): {config.batch_size}, Negatives (Q): {config.num_negatives}"
     )
 
-    model = GraphSAGENet(
-        depth=config.depth,
-        hidden_dim=config.hidden_dim,
-        output_dim=config.output_dim,
-        aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
-    )
-
-    trainer = GraphSAGETrainer(model=model, config=config)
+    trainer, runner_state, start_update = GraphSAGETrainer.load(CHECKPOINT_DIR, config)
     update_fn = trainer.make_update_fn()
 
     options = CheckpointManagerOptions(max_to_keep=3, create=True)
     mngr = CheckpointManager(CHECKPOINT_DIR, options=options)
 
-    rng = jax.random.PRNGKey(config.seed)
-    rng, train_rng = jax.random.split(rng, 2)
-
-    start = time.time()
-    runner_state = trainer.init_runner(train_rng)
-    start_update = 0
-
-    latest_step = mngr.latest_step()
-    if latest_step is not None:
-        logger.info(f"Found checkpoint at update step {latest_step}. Restoring...")
-        runner_state = cast(
-            GraphSAGERunnerState,
-            mngr.restore(
-                latest_step, args=orbax.checkpoint.args.PyTreeRestore(item=runner_state)
-            ),
-        )
-        start_update = latest_step + 1
+    if start_update > 0:
+        logger.info(f"Found checkpoint. Resuming from update {start_update}.")
     else:
         logger.info("No checkpoints found. Starting training from scratch.")
 
@@ -95,6 +69,7 @@ def run_training(config: GraphSageConfig | None):
 
     update_idx = 0
 
+    start = time.time()
     start_epoch = start_update // (len(dataset.train) * config.num_batches)
 
     for epoch in range(start_epoch, config.num_epochs):

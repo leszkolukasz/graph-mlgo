@@ -1,15 +1,19 @@
+from pathlib import Path
 from typing import Callable, NamedTuple, cast
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
 
-from graph_mlgo.graph import Graph, Node
+from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding import GraphSAGENet
+from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
 from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.constants import NODE_FEATURES_DIM
 from graph_mlgo.graph.embedding.utils import extract_neighborhood, graphsage_loss
 
 
@@ -26,11 +30,49 @@ class GraphSAGETrainer:
         self.model = model
         self.config = config
 
+    @classmethod
+    def load(
+        cls, checkpoint_path: str, config: GraphSageConfig | None = None
+    ) -> tuple["GraphSAGETrainer", GraphSAGERunnerState, int]:
+        cp_path = Path(checkpoint_path).absolute()
+
+        if config is None:
+            config_path = cp_path / "config.yaml"
+            config = GraphSageConfig.from_file(config_path)
+
+        model = GraphSAGENet(
+            depth=config.depth,
+            hidden_dim=config.hidden_dim,
+            output_dim=config.output_dim,
+            aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
+        )
+
+        trainer = cast("GraphSAGETrainer", cls(model=model, config=config))
+
+        rng = jax.random.PRNGKey(config.seed)
+        rng, train_rng = jax.random.split(rng, 2)
+        runner_state = trainer.init_runner(train_rng)
+
+        mngr = ocp.CheckpointManager(cp_path)
+        latest_step = mngr.latest_step()
+
+        if latest_step is not None:
+            runner_state = cast(
+                GraphSAGERunnerState,
+                mngr.restore(
+                    latest_step, args=ocp.args.PyTreeRestore(item=runner_state)
+                ),
+            )
+            start_update = latest_step + 1
+        else:
+            start_update = 0
+
+        return trainer, runner_state, start_update
+
     def init_runner(self, rng: jax.Array) -> GraphSAGERunnerState:
         rng, init_rng = jax.random.split(rng, 2)
 
-        dummy_feat_dim = Node.get_features_dim()
-        dummy_h = jnp.zeros((1, dummy_feat_dim))
+        dummy_h = jnp.zeros((1, NODE_FEATURES_DIM))
 
         dummy_indices = [
             jnp.zeros((1, self.config.num_neighbours), dtype=jnp.int32)

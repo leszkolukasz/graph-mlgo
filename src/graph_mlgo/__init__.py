@@ -10,5 +10,9 @@ if multiprocessing.current_process().name == "MainProcess":
     logger.info(f"llvmlite library path: {ffi.lib._name}")
     logger.info(f"JAX devices: {jax.devices()}")
 
+import os
+
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
 llvm.initialize_native_target()
 llvm.initialize_native_asmprinter()

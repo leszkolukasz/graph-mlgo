@@ -8,7 +8,7 @@ from gymnasium import spaces
 from loguru import logger
 
 from graph_mlgo.graph.embedding import Embedder
-from graph_mlgo.graph.graph import Edge, Graph, Node
+from graph_mlgo.graph.graph import Edge, Graph
 
 
 class LLVMInlineEnv(gym.Env):
@@ -24,11 +24,7 @@ class LLVMInlineEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(
-                self.embedder.get_embedding_dim(
-                    Node.get_features_dim(), Graph.get_global_embedding_dim()
-                ),
-            ),
+            shape=(self.embedder.get_embedding_dim(),),
             dtype=np.float32,
         )
 

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Callable, cast
 
 import gymnasium as gym
@@ -5,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
 
@@ -34,6 +36,42 @@ class PPOTrainer:
         self.config = config
         self.env = env
         self.agent = agent
+
+    @classmethod
+    def load(
+        cls, env: gym.Env, checkpoint_path: str, config: PPOConfig | None = None
+    ) -> tuple["PPOTrainer", RunnerState, int]:
+        cp_path = Path(checkpoint_path)
+
+        if config is None:
+            config_path = cp_path / "config.yaml"
+            config = PPOConfig.from_file(config_path)
+
+        agent = PPOAgent(
+            hidden_sizes=config.hidden_sizes,
+        )
+
+        trainer = cast("PPOTrainer", cls(config, env, agent))
+
+        rng = jax.random.PRNGKey(config.seed)
+        rng, train_rng = jax.random.split(rng, 2)
+        runner_state = trainer.init_runner(train_rng)
+
+        mngr = ocp.CheckpointManager(checkpoint_path)
+        latest_step = mngr.latest_step()
+
+        if latest_step is not None:
+            runner_state = cast(
+                RunnerState,
+                mngr.restore(
+                    latest_step, args=ocp.args.PyTreeRestore(item=runner_state)
+                ),
+            )
+            start_update = latest_step + 1
+        else:
+            start_update = 0
+
+        return trainer, runner_state, start_update
 
     def init_runner(self, rng: jax.Array) -> RunnerState:
         rng, init_rng = jax.random.split(rng, 2)
