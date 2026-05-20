@@ -1,14 +1,11 @@
 import datetime
-import os
 import sys
 import time
 from dataclasses import asdict
 
 import jax
 import numpy as np
-import orbax.checkpoint
 from loguru import logger
-from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from tqdm import tqdm
 
 import wandb
@@ -17,26 +14,47 @@ from graph_mlgo.agent.training.ppo.evaluator import PPOEvaluator
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
+from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
+from graph_mlgo.graph.embedding.training.trainer import (
+    GraphSAGERunnerState,
+    GraphSAGETrainer,
+)
 
 RUNNING_STAT_WINDOW = 100
-CHECKPOINT_DIR = os.path.abspath("./models/ppo")
 ENABLE_WANDB = False
 
 
 def run_training(config: PPOConfig | None):
     if config is None:
-        config = PPOConfig.from_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
-        logger.info(f"Loaded config from checkpoint: {config}")
+        config = PPOConfig.load()
+        logger.info(f"Loaded PPO config from checkpoint: {config}")
     else:
-        logger.info(f"Using provided config: {config}")
+        logger.info(f"Using provided PPO config: {config}")
 
     dataset = ComPileDataset(config.dataset_path)
 
-    if config.embedder_path is None:
+    rng: jax.Array = jax.random.PRNGKey(config.seed)
+    ppo_rng, sage_rng, eval_rng = jax.random.split(rng, 3)
+
+    sage_trainer: GraphSAGETrainer | None = None
+    sage_runner_state: GraphSAGERunnerState | None = None
+
+    if config.embedder_train_config is not None:
+        sage_trainer, sage_runner_state, _ = GraphSAGETrainer.load(
+            rng=sage_rng, config=config.embedder_train_config
+        )
+        embedder = GraphSAGEEmbedder(
+            net=sage_trainer.model,
+            params=sage_runner_state.train_state.params,
+            config=config.embedder_train_config,
+        )
+    elif config.embedder_path is None:
         embedder = TrivialEmbedder()
     else:
-        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path)
+        embedder = GraphSAGEEmbedder.load(
+            checkpoint_path=config.embedder_path, rng=sage_rng
+        )
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -61,17 +79,15 @@ def run_training(config: PPOConfig | None):
         num_envs=config.eval_num_envs,
         episode_length=config.episode_length,
     )
+    assert isinstance(env, LLVMInlineEnv)
+    assert isinstance(eval_env, LLVMInlineEnv)
 
-    trainer, runner_state, start_update = PPOTrainer.load(env, CHECKPOINT_DIR, config)
+    trainer, ppo_runner_state, start_update = PPOTrainer.load(
+        env=env, config=config, rng=ppo_rng
+    )
     evaluator = PPOEvaluator(config, eval_env, trainer.agent)
     update_fn = trainer.make_update_fn()
     eval_fn = evaluator.make_eval_fn()
-
-    options = CheckpointManagerOptions(max_to_keep=3, create=True)
-    mngr = CheckpointManager(CHECKPOINT_DIR, options=options)
-
-    eval_rng = jax.random.PRNGKey(config.seed + 1)
-    eval_rng, _ = jax.random.split(eval_rng, 2)
 
     start = time.time()
     if start_update > 0:
@@ -95,7 +111,9 @@ def run_training(config: PPOConfig | None):
     last_eval_return = None
 
     for update_idx in bar:
-        runner_state, metrics = update_fn(runner_state)
+        ppo_runner_state, sage_runner_state, metrics = update_fn(
+            ppo_runner_state, sage_runner_state
+        )
 
         do_eval = (
             update_idx % config.eval_every_updates == 0
@@ -140,7 +158,7 @@ def run_training(config: PPOConfig | None):
         if do_eval:
             eval_rng, eval_step_rng = jax.random.split(eval_rng)
             eval_metrics = eval_fn(
-                runner_state.train_state, runner_state.obs_norm, eval_step_rng
+                ppo_runner_state.train_state, ppo_runner_state.obs_norm, eval_step_rng
             )
 
             current_eval_return = float(jax.device_get(eval_metrics["eval_return"]))
@@ -151,22 +169,19 @@ def run_training(config: PPOConfig | None):
             wandb.log(step_log, step=update_idx)
 
         if do_checkpoint:
-            config.to_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
-
-            jax.tree_util.tree_map(
-                lambda x: (
-                    x.block_until_ready() if hasattr(x, "block_until_ready") else x
-                ),
-                runner_state,
-            )
-            mngr.save(update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state))
+            trainer.save_checkpoint(ppo_runner_state, update_idx)
+            if sage_trainer is not None:
+                assert sage_runner_state is not None
+                sage_trainer.save_checkpoint(sage_runner_state, update_idx)
 
         if last_eval_return is not None:
             postfix_dict["eval_ret"] = f"{last_eval_return:.1f}"
 
         bar.set_postfix(postfix_dict)
 
-    mngr.wait_until_finished()
+    trainer.mngr.wait_until_finished()
+    if sage_trainer is not None:
+        sage_trainer.mngr.wait_until_finished()
 
     logger.info("Training completed after %.2f seconds.", time.time() - start)
 
@@ -174,7 +189,7 @@ def run_training(config: PPOConfig | None):
 if __name__ == "__main__":
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",
-        embedder_path="./models/graphsage",
+        # embedder_path="./models/graphsage",
         num_envs=1,
         hidden_sizes=(128, 128),
     )

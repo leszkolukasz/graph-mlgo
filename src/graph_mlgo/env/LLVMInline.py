@@ -1,14 +1,38 @@
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import gymnasium as gym
+import jax
+import jax.numpy as jnp
 import numpy as np
 from datasets import Dataset
 from gymnasium import spaces
 from loguru import logger
 
-from graph_mlgo.graph.embedding import Embedder
+from graph_mlgo.graph.embedding import Embedder, EmbeddingParts
 from graph_mlgo.graph.graph import Edge, Graph
+
+
+@dataclass
+class Observation:
+    embedding: jnp.ndarray
+    parts: EmbeddingParts
+
+    def to_device(self, device: jax.Device) -> "Observation":
+        return Observation(
+            embedding=jax.device_put(self.embedding, device),
+            parts=self.parts.to_device(device),
+        )
+
+    def to_cpu(self) -> "Observation":
+        return self.to_device(jax.devices("cpu")[0])
+
+    def to_gpu(self) -> "Observation":
+        gpus = jax.devices("gpu")
+        if not gpus:
+            raise RuntimeError("No GPU devices available for Observation")
+        return self.to_device(gpus[0])
 
 
 class LLVMInlineEnv(gym.Env):
@@ -35,7 +59,7 @@ class LLVMInlineEnv(gym.Env):
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
-    ) -> tuple[np.ndarray, dict]:
+    ) -> tuple[Observation, dict]:
         super().reset(seed=seed)
         if seed is not None:
             random.seed(seed)
@@ -57,12 +81,12 @@ class LLVMInlineEnv(gym.Env):
         self.baseline_size = self.graph.calc_native_size()
         self.baseline_ir = str(self.graph.module)
 
-        obs = self.graph.get_edge_embedding(self.current_edge, self.embedder)
-        return obs, {}
+        embed, parts = self.graph.get_edge_embedding(self.current_edge, self.embedder)
+        return Observation(embedding=embed, parts=parts).to_cpu(), {}
 
     def step(
         self, action: int | np.ndarray
-    ) -> tuple[np.ndarray, float, bool, bool, dict]:
+    ) -> tuple[Observation, float, bool, bool, dict]:
         assert self.graph is not None
         assert self.current_edge is not None
         assert self.edge_iterator is not None
@@ -99,11 +123,17 @@ class LLVMInlineEnv(gym.Env):
             obs_shape = self.observation_space.shape
             assert obs_shape is not None
 
-            obs = np.zeros(obs_shape, dtype=np.float32)
+            obs = Observation(
+                embedding=jnp.zeros(obs_shape, dtype=jnp.float32),
+                parts=EmbeddingParts.empty(embed_dim=obs_shape[0]),
+            )
         else:
-            obs = self.graph.get_edge_embedding(self.current_edge, self.embedder)
+            embed, parts = self.graph.get_edge_embedding(
+                self.current_edge, self.embedder
+            )
+            obs = Observation(embedding=embed, parts=parts)
 
-        return obs, reward, terminated, truncated, info
+        return obs.to_cpu(), reward, terminated, truncated, info
 
 
 def sample_run():

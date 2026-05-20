@@ -1,22 +1,29 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from graph_mlgo.constants import MAX_EDGES
+from graph_mlgo.graph.embedding.config import GraphSageConfig
+
+CHECKPOINT_DIR = os.path.abspath("./models/ppo")
 
 
 @dataclass
 class PPOConfig:
     dataset_path: str
-    embedder_path: str | None = None
+    checkpoint_dir: str = CHECKPOINT_DIR
+
+    embedder_path: str | None = None  # load existing embedder
+    embedder_train_config: GraphSageConfig | None = None  # train new embedder
 
     total_timesteps: int = 10_000_000
     num_envs: int = 1
 
     rollout_length: int = 1024
     update_epochs: int = 4
-    minibatch_size: int = 256
+    minibatch_size: int = 512
 
     lr: float = 1e-4
     gamma: float = 0.90
@@ -54,7 +61,17 @@ class PPOConfig:
         self.num_updates = self.total_timesteps // self.batch_size
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "PPOConfig":
+    def load(cls, path: str | Path | None = None) -> "PPOConfig":
+        return cls.from_file(path)
+
+    def save(self, path: str | None = None) -> None:
+        self.to_file(path or os.path.join(self.checkpoint_dir, "config.yaml"))
+
+    @classmethod
+    def from_file(cls, path: str | Path | None) -> "PPOConfig":
+        if path is None:
+            path = os.path.join(CHECKPOINT_DIR, "config.yaml")
+
         with open(path, "r") as f:
             data = yaml.safe_load(f)
 

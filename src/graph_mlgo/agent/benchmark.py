@@ -13,6 +13,7 @@ from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
+from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 from graph_mlgo.graph.graph import Graph
 from graph_mlgo.ir import compile_module
@@ -23,11 +24,17 @@ def run_benchmark(checkpoint_dir: str):
     logger.info(f"Loaded config from checkpoint: {config}")
 
     dataset = ComPileDataset(config.dataset_path)
+    rng = jax.random.PRNGKey(config.seed)
 
-    if config.embedder_path is None:
+    if config.embedder_train_config is not None:
+        embedder = GraphSAGEEmbedder.load(
+            checkpoint_path=config.embedder_train_config.checkpoint_dir,
+            rng=rng,
+        )
+    elif config.embedder_path is None:
         embedder = TrivialEmbedder()
     else:
-        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path)
+        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path, rng=rng)
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -40,6 +47,8 @@ def run_benchmark(checkpoint_dir: str):
         num_envs=1,
         episode_length=config.episode_length,
     )
+    assert isinstance(dummy_env, LLVMInlineEnv)
+
     agent = PPOAgent(
         hidden_sizes=config.hidden_sizes,
     )

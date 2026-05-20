@@ -1,11 +1,13 @@
 from typing import TYPE_CHECKING, Iterator
 
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from llvmlite import binding as llvm
 
 from graph_mlgo import cpp_bindings  # ty: ignore
+from graph_mlgo.graph.embedding import EmbeddingParts
 from graph_mlgo.graph.embedding.constants import GLOBAL_FEATURES_DIM
 from graph_mlgo.graph.node import Node
 from graph_mlgo.ir import compile_module
@@ -47,7 +49,9 @@ class Graph:
     def calc_native_size(self) -> int:
         return compile_module(str(self.module), enable_inlining=False)[0]
 
-    def get_edge_embedding(self, edge: Edge, embedder: "Embedder") -> np.ndarray:
+    def get_edge_embedding(
+        self, edge: Edge, embedder: "Embedder"
+    ) -> tuple[jnp.ndarray, EmbeddingParts]:
         return embedder.embed(edge, self)
 
     def get_global_features(self) -> np.ndarray:

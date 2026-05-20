@@ -1,14 +1,11 @@
 import datetime
-import os
 import sys
 import time
 from dataclasses import asdict
 
 import jax
 import numpy as np
-import orbax.checkpoint
 from loguru import logger
-from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from tqdm import tqdm
 
 import wandb
@@ -21,16 +18,15 @@ from graph_mlgo.graph.embedding.training.trainer import (
 from graph_mlgo.graph.embedding.utils import sample_training_batches
 
 RUNNING_STAT_WINDOW = 100
-CHECKPOINT_DIR = os.path.abspath("./models/graphsage")
 ENABLE_WANDB = False
 
 
 def run_training(config: GraphSageConfig | None):
     if config is None:
-        config = GraphSageConfig.from_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
-        logger.info(f"Loaded config from checkpoint: {config}")
+        config = GraphSageConfig.load()
+        logger.info(f"Loaded SAGE config from checkpoint: {config}")
     else:
-        logger.info(f"Using provided config: {config}")
+        logger.info(f"Using provided SAGE config: {config}")
 
     dataset = ComPileDataset(config.dataset_path)
 
@@ -42,11 +38,10 @@ def run_training(config: GraphSageConfig | None):
         f"Batch size (u,v pairs): {config.batch_size}, Negatives (Q): {config.num_negatives}"
     )
 
-    trainer, runner_state, start_update = GraphSAGETrainer.load(CHECKPOINT_DIR, config)
-    update_fn = trainer.make_update_fn()
+    rng = jax.random.PRNGKey(config.seed)
 
-    options = CheckpointManagerOptions(max_to_keep=3, create=True)
-    mngr = CheckpointManager(CHECKPOINT_DIR, options=options)
+    trainer, runner_state, start_update = GraphSAGETrainer.load(rng=rng, config=config)
+    update_fn = trainer.make_update_fn()
 
     if start_update > 0:
         logger.info(f"Found checkpoint. Resuming from update {start_update}.")
@@ -131,23 +126,11 @@ def run_training(config: GraphSageConfig | None):
                 )
 
                 if do_checkpoint and update_idx > start_update:
-                    config.to_file(os.path.join(CHECKPOINT_DIR, "config.yaml"))
-
-                    jax.tree_util.tree_map(
-                        lambda x: (
-                            x.block_until_ready()
-                            if hasattr(x, "block_until_ready")
-                            else x
-                        ),
-                        runner_state,
-                    )
-                    mngr.save(
-                        update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state)
-                    )
+                    trainer.save_checkpoint(runner_state, update_idx)
 
                 update_idx += 1
 
-    mngr.wait_until_finished()
+    trainer.mngr.wait_until_finished()
     logger.info("GraphSAGE Training completed after %.2f seconds.", time.time() - start)
 
 

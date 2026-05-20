@@ -1,13 +1,17 @@
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import yaml
 
+CHECKPOINT_DIR = os.path.abspath("./models/graphsage")
+
 
 @dataclass
 class GraphSageConfig:
     dataset_path: str
+    checkpoint_dir: str = CHECKPOINT_DIR
 
     depth: int = 4
     num_neighbours: int = 5
@@ -27,7 +31,17 @@ class GraphSageConfig:
     checkpoint_every_updates: int = 10000
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "GraphSageConfig":
+    def load(cls, path: str | Path | None = None) -> "GraphSageConfig":
+        return cls.from_file(path)
+
+    def save(self, path: str | None = None) -> None:
+        self.to_file(path or os.path.join(self.checkpoint_dir, "config.yaml"))
+
+    @classmethod
+    def from_file(cls, path: str | Path | None) -> "GraphSageConfig":
+        if path is None:
+            path = os.path.join(CHECKPOINT_DIR, "config.yaml")
+
         with open(path, "r") as f:
             data = yaml.safe_load(f)
 

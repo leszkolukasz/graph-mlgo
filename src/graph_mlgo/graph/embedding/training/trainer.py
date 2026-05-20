@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import orbax
 import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
@@ -19,21 +20,32 @@ from graph_mlgo.graph.embedding.utils import extract_neighborhood, graphsage_los
 
 class GraphSAGERunnerState(NamedTuple):
     train_state: TrainState
-    rng: jax.Array
 
 
 class GraphSAGETrainer:
     config: GraphSageConfig
     model: GraphSAGENet
+    mngr: ocp.CheckpointManager
 
     def __init__(self, *, model: GraphSAGENet, config: GraphSageConfig):
         self.model = model
         self.config = config
 
+        options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
+        self.mngr = ocp.CheckpointManager(config.checkpoint_dir, options=options)
+
     @classmethod
     def load(
-        cls, checkpoint_path: str, config: GraphSageConfig | None = None
+        cls,
+        *,
+        rng: jax.Array,
+        checkpoint_path: str | None = None,
+        config: GraphSageConfig | None = None,
     ) -> tuple["GraphSAGETrainer", GraphSAGERunnerState, int]:
+        assert checkpoint_path is not None or config is not None, (
+            "Must provide either checkpoint_path or config to load GraphSAGETrainer"
+        )
+        checkpoint_path = checkpoint_path or config.checkpoint_dir  # ty: ignore
         cp_path = Path(checkpoint_path).absolute()
 
         if config is None:
@@ -48,10 +60,7 @@ class GraphSAGETrainer:
         )
 
         trainer = cast("GraphSAGETrainer", cls(model=model, config=config))
-
-        rng = jax.random.PRNGKey(config.seed)
-        rng, train_rng = jax.random.split(rng, 2)
-        runner_state = trainer.init_runner(train_rng)
+        runner_state = trainer.init_runner(rng)
 
         mngr = ocp.CheckpointManager(cp_path)
         latest_step = mngr.latest_step()
@@ -69,9 +78,18 @@ class GraphSAGETrainer:
 
         return trainer, runner_state, start_update
 
-    def init_runner(self, rng: jax.Array) -> GraphSAGERunnerState:
-        rng, init_rng = jax.random.split(rng, 2)
+    def save_checkpoint(
+        self, runner_state: GraphSAGERunnerState, update_idx: int
+    ) -> None:
+        self.config.save()
 
+        jax.tree_util.tree_map(
+            lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x,
+            runner_state,
+        )
+        self.mngr.save(update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state))
+
+    def init_runner(self, rng: jax.Array) -> GraphSAGERunnerState:
         dummy_h = jnp.zeros((1, NODE_FEATURES_DIM))
 
         dummy_indices = [
@@ -79,7 +97,7 @@ class GraphSAGETrainer:
             for _ in range(self.model.depth)
         ]
 
-        params = self.model.init(init_rng, dummy_h, dummy_indices)
+        params = self.model.init(rng, dummy_h, dummy_indices)
 
         tx = optax.chain(
             optax.clip_by_global_norm(self.config.max_grad_norm),
@@ -90,7 +108,6 @@ class GraphSAGETrainer:
 
         return GraphSAGERunnerState(
             train_state=train_state,
-            rng=rng,
         )
 
     make_update_fn_ret_type = Callable[
@@ -179,7 +196,6 @@ class GraphSAGETrainer:
 
             next_runner_state = GraphSAGERunnerState(
                 train_state=next_train_state,
-                rng=runner_state.rng,
             )
 
             return next_runner_state, metrics

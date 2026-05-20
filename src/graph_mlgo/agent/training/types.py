@@ -2,6 +2,8 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
+from graph_mlgo.env.LLVMInline import Observation
+
 
 class Transition(NamedTuple):
     obs: jnp.ndarray
@@ -24,9 +26,9 @@ class RunningNorm(NamedTuple):
     count: jnp.ndarray
 
 
-class RunnerState(NamedTuple):
+class PPORunnerState(NamedTuple):
     train_state: dict
-    obs: jnp.ndarray
+    obs: Observation
     rng: jnp.ndarray
     obs_norm: RunningNorm
     rew_norm: RunningNorm

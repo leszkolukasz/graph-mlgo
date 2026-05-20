@@ -1,11 +1,11 @@
 from pathlib import Path
 from typing import Callable, cast
 
-import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import orbax
 import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
@@ -13,8 +13,8 @@ from flax.typing import VariableDict
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.types import (
+    PPORunnerState,
     RolloutInfo,
-    RunnerState,
     RunningNorm,
     Transition,
 )
@@ -25,22 +25,38 @@ from graph_mlgo.agent.utils import (
     ppo_loss,
     update_running_norm,
 )
+from graph_mlgo.env.LLVMInline import LLVMInlineEnv, Observation
+from graph_mlgo.graph.embedding import GraphSAGEEmbedder
+from graph_mlgo.graph.embedding.training.trainer import GraphSAGERunnerState
 
 
 class PPOTrainer:
     config: PPOConfig
-    env: gym.Env
+    env: LLVMInlineEnv
     agent: PPOAgent
+    mngr: ocp.CheckpointManager
 
-    def __init__(self, config: PPOConfig, env: gym.Env, agent: PPOAgent):
+    def __init__(self, config: PPOConfig, env: LLVMInlineEnv, agent: PPOAgent):
         self.config = config
         self.env = env
         self.agent = agent
 
+        options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
+        self.mngr = ocp.CheckpointManager(config.checkpoint_dir, options=options)
+
     @classmethod
     def load(
-        cls, env: gym.Env, checkpoint_path: str, config: PPOConfig | None = None
-    ) -> tuple["PPOTrainer", RunnerState, int]:
+        cls,
+        *,
+        env: LLVMInlineEnv,
+        rng: jax.Array,
+        checkpoint_path: str | None = None,
+        config: PPOConfig | None = None,
+    ) -> tuple["PPOTrainer", PPORunnerState, int]:
+        assert checkpoint_path is not None or config is not None, (
+            "Must provide either checkpoint_path or config to load PPOTrainer"
+        )
+        checkpoint_path = checkpoint_path or config.checkpoint_dir  # ty: ignore
         cp_path = Path(checkpoint_path)
 
         if config is None:
@@ -53,16 +69,14 @@ class PPOTrainer:
 
         trainer = cast("PPOTrainer", cls(config, env, agent))
 
-        rng = jax.random.PRNGKey(config.seed)
-        rng, train_rng = jax.random.split(rng, 2)
-        runner_state = trainer.init_runner(train_rng)
+        runner_state = trainer.init_runner(rng)
 
         mngr = ocp.CheckpointManager(checkpoint_path)
         latest_step = mngr.latest_step()
 
         if latest_step is not None:
             runner_state = cast(
-                RunnerState,
+                PPORunnerState,
                 mngr.restore(
                     latest_step, args=ocp.args.PyTreeRestore(item=runner_state)
                 ),
@@ -73,10 +87,19 @@ class PPOTrainer:
 
         return trainer, runner_state, start_update
 
-    def init_runner(self, rng: jax.Array) -> RunnerState:
+    def save_checkpoint(self, runner_state: PPORunnerState, update_idx: int) -> None:
+        self.config.save()
+
+        jax.tree_util.tree_map(
+            lambda x: x.block_until_ready() if hasattr(x, "block_until_ready") else x,
+            runner_state,
+        )
+        self.mngr.save(update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state))
+
+    def init_runner(self, rng: jax.Array) -> PPORunnerState:
         rng, init_rng = jax.random.split(rng, 2)
         obs, _ = self.env.reset()
-        obs_dim = obs.shape[-1]
+        obs_dim = obs.embedding.shape[-1]
 
         params = self.agent.init(init_rng, jnp.zeros((1, obs_dim)))
 
@@ -104,7 +127,7 @@ class PPOTrainer:
         episode_returns = jnp.zeros((self.config.num_envs,), dtype=jnp.float32)
         episode_lengths = jnp.zeros((self.config.num_envs,), dtype=jnp.int32)
 
-        return RunnerState(
+        return PPORunnerState(
             train_state=train_state,
             obs=obs,
             rng=rng,
@@ -116,7 +139,8 @@ class PPOTrainer:
         )
 
     make_update_fn_ret_type = Callable[
-        [RunnerState], tuple[RunnerState, dict[str, jnp.ndarray]]
+        [PPORunnerState, GraphSAGERunnerState | None],
+        tuple[PPORunnerState, GraphSAGERunnerState | None, dict[str, jnp.ndarray]],
     ]
 
     def make_update_fn(self) -> make_update_fn_ret_type:
@@ -125,27 +149,32 @@ class PPOTrainer:
         agent = self.agent
 
         def _jax_act(
-            runner_state: RunnerState,
+            ppo_runner_state: PPORunnerState,
         ) -> tuple[
             jnp.ndarray, jnp.ndarray, jnp.ndarray, RunningNorm, jnp.ndarray, jnp.ndarray
         ]:
             if cfg.normalize_obs:
-                obs_norm = update_running_norm(runner_state.obs_norm, runner_state.obs)
+                obs_norm = update_running_norm(
+                    ppo_runner_state.obs_norm, ppo_runner_state.obs.embedding
+                )
                 obs_in = normalize(
-                    runner_state.obs, obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip
+                    ppo_runner_state.obs.embedding,
+                    obs_norm,
+                    eps=cfg.norm_eps,
+                    clip=cfg.obs_clip,
                 )
             else:
-                obs_norm = runner_state.obs_norm
-                obs_in = runner_state.obs
+                obs_norm = ppo_runner_state.obs_norm
+                obs_in = ppo_runner_state.obs.embedding
 
-            rng, act_rng = jax.random.split(runner_state.rng)
+            rng, act_rng = jax.random.split(ppo_runner_state.rng)
             action, _, log_prob = agent.act(
-                runner_state.train_state.params,  # ty: ignore
+                ppo_runner_state.train_state.params,  # ty: ignore
                 obs_in,
                 act_rng,
             )
             value = agent.apply(
-                runner_state.train_state.params,  # ty: ignore
+                ppo_runner_state.train_state.params,  # ty: ignore
                 obs_in,
                 method=agent.critic,
             )
@@ -153,7 +182,7 @@ class PPOTrainer:
             return action, value, log_prob, obs_norm, obs_in, rng  # ty: ignore
 
         jax_act_typ = Callable[
-            [RunnerState],
+            [PPORunnerState],
             tuple[
                 jnp.ndarray,
                 jnp.ndarray,
@@ -166,17 +195,17 @@ class PPOTrainer:
         jax_act = cast(jax_act_typ, jax.jit(_jax_act))
 
         def _jax_post_step(
-            runner_state: RunnerState,
+            runner_state: PPORunnerState,
             obs_norm: RunningNorm,
             obs_in: jnp.ndarray,
             rng: jnp.ndarray,
             action: jnp.ndarray,
             value: jnp.ndarray,
             log_prob: jnp.ndarray,
-            next_obs: jnp.ndarray,
+            next_obs: Observation,
             reward: jnp.ndarray,
             done: jnp.ndarray,
-        ) -> tuple[RunnerState, Transition, RolloutInfo]:
+        ) -> tuple[PPORunnerState, Transition, RolloutInfo]:
             return_for_norm = runner_state.running_returns * cfg.gamma + reward
 
             if cfg.normalize_reward:
@@ -210,7 +239,7 @@ class PPOTrainer:
                 completed_length=completed_length,
                 completed=done,
             )
-            next_carry = RunnerState(
+            next_carry = PPORunnerState(
                 train_state=runner_state.train_state,
                 obs=next_obs,
                 rng=rng,
@@ -224,33 +253,35 @@ class PPOTrainer:
 
         jax_post_step_typ = Callable[
             [
-                RunnerState,
+                PPORunnerState,
                 RunningNorm,
                 jnp.ndarray,
                 jnp.ndarray,
                 jnp.ndarray,
                 jnp.ndarray,
                 jnp.ndarray,
-                jnp.ndarray,
+                Observation,
                 jnp.ndarray,
                 jnp.ndarray,
             ],
-            tuple[RunnerState, Transition, RolloutInfo],
+            tuple[PPORunnerState, Transition, RolloutInfo],
         ]
         jax_post_step = cast(jax_post_step_typ, jax.jit(_jax_post_step))
 
         def update_minibatch(
-            train_state, minibatch: tuple[Transition, jnp.ndarray, jnp.ndarray]
-        ) -> tuple[TrainState, tuple[jnp.ndarray, jnp.ndarray]]:
+            ppo_train_state: TrainState,
+            minibatch: tuple[Transition, jnp.ndarray, jnp.ndarray],
+            sage_train_state: TrainState | None = None,
+        ) -> tuple[TrainState, TrainState | None, tuple[jnp.ndarray, jnp.ndarray]]:
             batch, adv_batch, target_batch = minibatch
 
             def loss_on_params(params: VariableDict):
                 return ppo_loss(params, agent, batch, adv_batch, target_batch, cfg)
 
             grad_fn = jax.value_and_grad(loss_on_params, has_aux=True)
-            (loss, aux), grads = grad_fn(train_state.params)
-            train_state = train_state.apply_gradients(grads=grads)
-            return train_state, (loss, aux)
+            (loss, aux), grads = grad_fn(ppo_train_state.params)
+            ppo_train_state = ppo_train_state.apply_gradients(grads=grads)
+            return ppo_train_state, sage_train_state, (loss, aux)
 
         def update_epoch(
             carry: tuple[
@@ -287,14 +318,17 @@ class PPOTrainer:
             return (train_state, flat_traj, flat_adv, flat_targets, rng), loss_info
 
         def _jax_update(
-            state: RunnerState, traj: Transition, rollout_info: RolloutInfo
-        ) -> tuple[RunnerState, dict[str, jnp.ndarray]]:
+            state: PPORunnerState, traj: Transition, rollout_info: RolloutInfo
+        ) -> tuple[PPORunnerState, dict[str, jnp.ndarray]]:
             last_obs_in = (
                 normalize(
-                    state.obs, state.obs_norm, eps=cfg.norm_eps, clip=cfg.obs_clip
+                    state.obs.embedding,
+                    state.obs_norm,
+                    eps=cfg.norm_eps,
+                    clip=cfg.obs_clip,
                 )
                 if cfg.normalize_obs
-                else state.obs
+                else state.obs.embedding
             )
             last_value = agent.apply(
                 state.train_state.params,  # ty: ignore
@@ -350,7 +384,7 @@ class PPOTrainer:
                 "is_finite": is_finite.astype(jnp.float32),
             }
 
-            next_runner_state = RunnerState(
+            next_runner_state = PPORunnerState(
                 train_state=train_state,
                 obs=state.obs,
                 rng=rng,
@@ -363,17 +397,24 @@ class PPOTrainer:
             return next_runner_state, metrics
 
         jax_update_typ = Callable[
-            [RunnerState, Transition, RolloutInfo],
-            tuple[RunnerState, dict[str, jnp.ndarray]],
+            [PPORunnerState, Transition, RolloutInfo],
+            tuple[PPORunnerState, dict[str, jnp.ndarray]],
         ]
         jax_update = cast(jax_update_typ, jax.jit(_jax_update))
 
         def update_step(
-            runner_state: RunnerState,
-        ) -> tuple[RunnerState, dict[str, jnp.ndarray]]:
+            runner_state: PPORunnerState,
+            sage_runner_state: GraphSAGERunnerState | None = None,
+        ) -> tuple[PPORunnerState, GraphSAGERunnerState | None, dict[str, jnp.ndarray]]:
             state = runner_state
             transitions: list[Transition] = []
             rollout_infos: list[RolloutInfo] = []
+
+            if sage_runner_state is not None:
+                assert isinstance(env, LLVMInlineEnv)
+                embedder = env.embedder
+                assert isinstance(embedder, GraphSAGEEmbedder)
+                embedder.params = sage_runner_state.train_state.params
 
             for _ in range(cfg.rollout_length):
                 action, value, log_prob, obs_norm, obs_in, rng = jax_act(state)
@@ -381,7 +422,7 @@ class PPOTrainer:
                 action_np = np.asarray(action)
                 next_obs, reward, terminated, truncated, _ = env.step(action_np)
 
-                next_obs_jax = jnp.asarray(next_obs, dtype=jnp.float32)
+                next_obs_jax = next_obs.to_gpu()
                 reward_jax = jnp.asarray(reward, dtype=jnp.float32)
                 done_jax = jnp.logical_or(terminated, truncated).astype(jnp.float32)
 
@@ -408,6 +449,6 @@ class PPOTrainer:
 
             next_runner_state, metrics = jax_update(state, traj, stacked_rollout_info)
 
-            return next_runner_state, metrics
+            return next_runner_state, sage_runner_state, metrics
 
         return update_step
