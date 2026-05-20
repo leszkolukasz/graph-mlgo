@@ -1,5 +1,4 @@
 import random
-from dataclasses import dataclass
 from typing import Any
 
 import gymnasium as gym
@@ -7,6 +6,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from datasets import Dataset
+from flax import struct
 from gymnasium import spaces
 from loguru import logger
 
@@ -14,7 +14,7 @@ from graph_mlgo.graph.embedding import Embedder, EmbeddingParts
 from graph_mlgo.graph.graph import Edge, Graph
 
 
-@dataclass
+@struct.dataclass
 class Observation:
     embedding: jnp.ndarray
     parts: EmbeddingParts
@@ -82,7 +82,7 @@ class LLVMInlineEnv(gym.Env):
         self.baseline_ir = str(self.graph.module)
 
         embed, parts = self.graph.get_edge_embedding(self.current_edge, self.embedder)
-        return Observation(embedding=embed, parts=parts).to_cpu(), {}
+        return Observation(embedding=embed, parts=parts), {}
 
     def step(
         self, action: int | np.ndarray
@@ -133,7 +133,7 @@ class LLVMInlineEnv(gym.Env):
             )
             obs = Observation(embedding=embed, parts=parts)
 
-        return obs.to_cpu(), reward, terminated, truncated, info
+        return obs, reward, terminated, truncated, info
 
 
 def sample_run():

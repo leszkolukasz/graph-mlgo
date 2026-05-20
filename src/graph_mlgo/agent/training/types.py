@@ -1,12 +1,13 @@
 from typing import NamedTuple
 
 import jax.numpy as jnp
+from flax.typing import VariableDict
 
 from graph_mlgo.env.LLVMInline import Observation
 
 
 class Transition(NamedTuple):
-    obs: jnp.ndarray
+    obs: Observation
     action: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
@@ -27,7 +28,7 @@ class RunningNorm(NamedTuple):
 
 
 class PPORunnerState(NamedTuple):
-    train_state: dict
+    train_state: VariableDict
     obs: Observation
     rng: jnp.ndarray
     obs_norm: RunningNorm

@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, cast
 
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
+from flax import struct
 from flax.typing import VariableDict
 
 from graph_mlgo.constants import MAX_NODES
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from graph_mlgo.graph import Edge, Graph
 
 
-@dataclass
+@struct.dataclass
 class EmbeddingAux:
     h: jnp.ndarray
     indices: list[jnp.ndarray]
@@ -38,7 +38,7 @@ class EmbeddingAux:
         return self.to_device(gpus[0])
 
 
-@dataclass
+@struct.dataclass
 class EmbeddingParts:
     global_feat: jnp.ndarray
     edge_embed: jnp.ndarray

@@ -14,8 +14,8 @@ from graph_mlgo.agent.training.ppo.evaluator import PPOEvaluator
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
+from graph_mlgo.graph.embedding.config import GraphSageConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     GraphSAGERunnerState,
     GraphSAGETrainer,
@@ -79,8 +79,6 @@ def run_training(config: PPOConfig | None):
         num_envs=config.eval_num_envs,
         episode_length=config.episode_length,
     )
-    assert isinstance(env, LLVMInlineEnv)
-    assert isinstance(eval_env, LLVMInlineEnv)
 
     trainer, ppo_runner_state, start_update = PPOTrainer.load(
         env=env, config=config, rng=ppo_rng
@@ -157,6 +155,13 @@ def run_training(config: PPOConfig | None):
 
         if do_eval:
             eval_rng, eval_step_rng = jax.random.split(eval_rng)
+
+            if sage_runner_state is not None:
+                # logger.info("Updating embedder parameters for evaluation.")
+                embedder = env.unwrapped.embedder  # ty: ignore
+                assert isinstance(embedder, GraphSAGEEmbedder)
+                embedder.params = sage_runner_state.train_state.params
+
             eval_metrics = eval_fn(
                 ppo_runner_state.train_state, ppo_runner_state.obs_norm, eval_step_rng
             )
@@ -187,10 +192,12 @@ def run_training(config: PPOConfig | None):
 
 
 if __name__ == "__main__":
+    sage_config = GraphSageConfig(dataset_path="./data/ComPile-1.0GB")
+
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",
         # embedder_path="./models/graphsage",
-        num_envs=1,
+        embedder_train_config=sage_config,
         hidden_sizes=(128, 128),
     )
 

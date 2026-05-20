@@ -4,6 +4,7 @@ import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import numpy as np
+from flax.typing import VariableDict
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
@@ -21,7 +22,9 @@ class PPOEvaluator:
         self.eval_env = eval_env
         self.agent = agent
 
-    make_eval_fn_ret_type = Callable[[dict, RunningNorm, jax.Array], dict[str, float]]
+    make_eval_fn_ret_type = Callable[
+        [VariableDict, RunningNorm, jax.Array], dict[str, float]
+    ]
 
     def make_eval_fn(self) -> make_eval_fn_ret_type:
         cfg = self.config
@@ -42,16 +45,16 @@ class PPOEvaluator:
             return action, rng
 
         def evaluate(
-            train_state: dict, obs_norm: RunningNorm, rng: jax.Array
+            train_state: VariableDict, obs_norm: RunningNorm, rng: jax.Array
         ) -> dict[str, float]:
             obs, _ = eval_env.reset()
 
-            episode_returns = np.zeros(obs.shape[0], dtype=np.float32)
+            episode_returns = np.zeros(obs.embedding.shape[0], dtype=np.float32)
             total_completed_return = 0.0
             total_completed_count = 0.0
 
             for _ in range(cfg.eval_horizon):
-                obs_jax = jnp.asarray(obs, dtype=jnp.float32)
+                obs_jax = jnp.asarray(obs.embedding, dtype=jnp.float32)
                 action_jax, rng = jax_act(train_state.params, obs_norm, obs_jax, rng)  # ty: ignore
 
                 action_np = np.asarray(action_jax)

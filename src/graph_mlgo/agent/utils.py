@@ -1,8 +1,10 @@
-from typing import TYPE_CHECKING
+import dataclasses
+from typing import TYPE_CHECKING, Any
 
 import gymnasium as gym
 import jax
 import jax.numpy as jnp
+import numpy as np
 from datasets import Dataset
 from flax.typing import VariableDict
 
@@ -52,6 +54,57 @@ def normalize(
     return y
 
 
+def replace(obj: Any, **kwargs) -> Any:
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.replace(obj, **kwargs)
+    elif hasattr(obj, "_replace"):  # NamedTuple
+        return obj._replace(**kwargs)
+    elif isinstance(obj, dict):
+        return {**obj, **kwargs}
+    else:
+        fields = dict(obj.__dict__) if hasattr(obj, "__dict__") else {}
+        fields.update(kwargs)
+        try:
+            return type(obj)(**fields)
+        except Exception as e:
+            raise TypeError(f"Could not replace fields in {type(obj)}") from e
+
+
+class SingleToBatchWrapper(gym.Wrapper):
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        return self._add_batch_dim(obs), self._batch_info(info)
+
+    def step(self, action):
+        single_action = (
+            action[0] if isinstance(action, (np.ndarray, jnp.ndarray, list)) else action
+        )
+
+        obs, reward, terminated, truncated, info = self.env.step(single_action)
+
+        if terminated or truncated:
+            info["final_observation"] = obs
+
+            obs, reset_info = self.env.reset()
+
+        return (
+            self._add_batch_dim(obs),
+            np.array([reward], dtype=np.float32),
+            np.array([terminated], dtype=np.float32),
+            np.array([truncated], dtype=np.float32),
+            self._batch_info(info),
+        )
+
+    def _add_batch_dim(self, tree):
+        return jax.tree_util.tree_map(lambda x: jnp.expand_dims(x, axis=0), tree)
+
+    def _batch_info(self, info: dict) -> dict:
+        return {
+            k: np.array([v]) if isinstance(v, (int, float, bool)) else [v]
+            for k, v in info.items()
+        }
+
+
 def make_env(
     dataset: Dataset, embedder: "Embedder", num_envs: int, episode_length: int = 1000
 ) -> gym.Env:
@@ -62,6 +115,9 @@ def make_env(
         env = gym.wrappers.TimeLimit(env, max_episode_steps=episode_length)
 
         return env
+
+    if num_envs == 1:
+        return SingleToBatchWrapper(make_single_env(0))
 
     env_fns = [lambda i=i: make_single_env(idx=i) for i in range(num_envs)]
 
@@ -102,9 +158,9 @@ def ppo_loss(
     cfg: "PPOConfig",
 ) -> tuple[jnp.ndarray, tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
     log_prob, entropy = agent.get_action_log_prob_and_entropy(
-        params, batch.obs, batch.action
+        params, batch.obs.embedding, batch.action
     )
-    value = agent.apply(params, batch.obs, method=agent.critic)
+    value = agent.apply(params, batch.obs.embedding, method=agent.critic)
 
     if cfg.normalize_advantage:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)

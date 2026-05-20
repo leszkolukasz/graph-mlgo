@@ -13,7 +13,6 @@ from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.env.LLVMInline import LLVMInlineEnv
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 from graph_mlgo.graph.graph import Graph
 from graph_mlgo.ir import compile_module
@@ -47,7 +46,6 @@ def run_benchmark(checkpoint_dir: str):
         num_envs=1,
         episode_length=config.episode_length,
     )
-    assert isinstance(dummy_env, LLVMInlineEnv)
 
     agent = PPOAgent(
         hidden_sizes=config.hidden_sizes,
