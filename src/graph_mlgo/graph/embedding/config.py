@@ -17,9 +17,15 @@ class EmbeddingConfig:
     depth: int = 4
     num_neighbours: int = 5
     hidden_dim: int = 128
-    output_dim: int = 32
+    output_dim: int = 64
+
+    # GAT
+    num_heads = 4
+
+    # GraphSAGE
     aggregator_type: Literal["mean", "pool"] = "pool"
 
+    # Training
     seed: int = 42
     lr: float = 3e-4
     max_grad_norm: float = 1.0
@@ -41,7 +47,17 @@ class EmbeddingConfig:
     @classmethod
     def from_file(cls, path: str | Path | None) -> "EmbeddingConfig":
         if path is None:
-            path = os.path.join(CHECKPOINT_DIR, "config.yaml")
+            candidates = [
+                Path("config.yaml"),
+            ]
+            for candidate in candidates:
+                if candidate.exists():
+                    path = candidate
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"No config file found at {path} or in subdirectories."
+                )
 
         with open(path, "r") as f:
             data = yaml.safe_load(f)

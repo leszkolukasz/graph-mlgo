@@ -9,25 +9,27 @@ import orbax
 import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
+from loguru import logger
 
 from graph_mlgo.graph import Graph
-from graph_mlgo.graph.embedding import GraphSAGENet
+from graph_mlgo.graph.embedding import GATNet, GraphSageNet
 from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
 from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.constants import NODE_FEATURES_DIM
-from graph_mlgo.graph.embedding.utils import extract_neighborhood, graphsage_loss
+from graph_mlgo.graph.embedding.networks import EmbeddingNet
+from graph_mlgo.graph.embedding.utils import contrastive_loss, extract_neighborhood
 
 
-class GraphSAGERunnerState(NamedTuple):
+class EmbeddingRunnerState(NamedTuple):
     train_state: TrainState
 
 
-class GraphSAGETrainer:
+class EmbeddingTrainer:
     config: EmbeddingConfig
-    model: GraphSAGENet
+    model: EmbeddingNet
     mngr: ocp.CheckpointManager
 
-    def __init__(self, *, model: GraphSAGENet, config: EmbeddingConfig):
+    def __init__(self, *, model: EmbeddingNet, config: EmbeddingConfig):
         self.model = model
         self.config = config
 
@@ -41,25 +43,40 @@ class GraphSAGETrainer:
         rng: jax.Array,
         checkpoint_path: str | None = None,
         config: EmbeddingConfig | None = None,
-    ) -> tuple["GraphSAGETrainer", GraphSAGERunnerState, int]:
+    ) -> tuple["EmbeddingTrainer", EmbeddingRunnerState, int]:
         assert checkpoint_path is not None or config is not None, (
-            "Must provide either checkpoint_path or config to load GraphSAGETrainer"
+            "Must provide either checkpoint_path or config to load the trainer."
         )
         checkpoint_path = checkpoint_path or config.checkpoint_dir  # ty: ignore
         cp_path = Path(checkpoint_path).absolute()
 
+        config_path = cp_path / "config.yaml"
         if config is None:
-            config_path = cp_path / "config.yaml"
             config = EmbeddingConfig.from_file(config_path)
+        elif config_path.exists():
+            config_from_file = EmbeddingConfig.from_file(config_path)
+            if config_from_file != config:
+                raise ValueError(
+                    f"Config provided does not match config in checkpoint. Provided: {config}, Checkpoint config: {config_from_file}"
+                )
 
-        model = GraphSAGENet(
-            depth=config.depth,
-            hidden_dim=config.hidden_dim,
-            output_dim=config.output_dim,
-            aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
+        model = (
+            GraphSageNet(
+                depth=config.depth,
+                hidden_dim=config.hidden_dim,
+                output_dim=config.output_dim,
+                aggregator_cls=NAME_TO_CLASS[config.aggregator_type],
+            )
+            if config.embedding_type == "graphsage"
+            else GATNet(
+                depth=config.depth,
+                hidden_dim=config.hidden_dim,
+                output_dim=config.output_dim,
+                num_heads=config.num_heads,
+            )
         )
 
-        trainer = cast("GraphSAGETrainer", cls(model=model, config=config))
+        trainer = cast("EmbeddingTrainer", cls(model=model, config=config))
         runner_state = trainer.init_runner(rng)
 
         mngr = ocp.CheckpointManager(cp_path)
@@ -67,19 +84,22 @@ class GraphSAGETrainer:
 
         if latest_step is not None:
             runner_state = cast(
-                GraphSAGERunnerState,
+                EmbeddingRunnerState,
                 mngr.restore(
                     latest_step, args=ocp.args.PyTreeRestore(item=runner_state)
                 ),
             )
             start_update = latest_step + 1
+            logger.warning(
+                f"Found existing embedding trainer checkpoint at {cp_path}, step: {latest_step}."
+            )
         else:
             start_update = 0
 
         return trainer, runner_state, start_update
 
     def save_checkpoint(
-        self, runner_state: GraphSAGERunnerState, update_idx: int
+        self, runner_state: EmbeddingRunnerState, update_idx: int
     ) -> None:
         self.config.save()
 
@@ -89,7 +109,7 @@ class GraphSAGETrainer:
         )
         self.mngr.save(update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state))
 
-    def init_runner(self, rng: jax.Array) -> GraphSAGERunnerState:
+    def init_runner(self, rng: jax.Array) -> EmbeddingRunnerState:
         dummy_h = jnp.zeros((1, NODE_FEATURES_DIM))
 
         dummy_indices = [
@@ -106,13 +126,13 @@ class GraphSAGETrainer:
 
         train_state = TrainState.create(apply_fn=self.model.apply, params=params, tx=tx)
 
-        return GraphSAGERunnerState(
+        return EmbeddingRunnerState(
             train_state=train_state,
         )
 
     make_update_fn_ret_type = Callable[
-        [GraphSAGERunnerState, tuple[list[str], list[str], list[list[str]]], Graph],
-        tuple[GraphSAGERunnerState, dict[str, jnp.ndarray]],
+        [EmbeddingRunnerState, tuple[list[str], list[str], list[list[str]]], Graph],
+        tuple[EmbeddingRunnerState, dict[str, jnp.ndarray]],
     ]
 
     def make_update_fn(self) -> make_update_fn_ret_type:
@@ -128,7 +148,7 @@ class GraphSAGETrainer:
         ) -> tuple[TrainState, dict[str, jnp.ndarray]]:
 
             def loss_fn(params: VariableDict):
-                return graphsage_loss(
+                return contrastive_loss(
                     params, model, h_in, neighbor_indices, u_idx, v_idx, neg_idx
                 )
 
@@ -153,10 +173,10 @@ class GraphSAGETrainer:
         jax_update = cast(jax_update_typ, jax.jit(_jax_update))
 
         def update_batch(
-            runner_state: GraphSAGERunnerState,
+            runner_state: EmbeddingRunnerState,
             batch_data: tuple[list[str], list[str], list[list[str]]],
             graph: Graph,
-        ) -> tuple[GraphSAGERunnerState, dict[str, jnp.ndarray]]:
+        ) -> tuple[EmbeddingRunnerState, dict[str, jnp.ndarray]]:
             batch_u, batch_v, batch_neg = batch_data
 
             all_target_nodes = list(batch_u) + list(batch_v)
@@ -194,7 +214,7 @@ class GraphSAGETrainer:
                 neg_idx_jax,
             )
 
-            next_runner_state = GraphSAGERunnerState(
+            next_runner_state = EmbeddingRunnerState(
                 train_state=next_train_state,
             )
 

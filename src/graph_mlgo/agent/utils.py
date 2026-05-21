@@ -7,9 +7,11 @@ import jax.numpy as jnp
 import numpy as np
 from datasets import Dataset
 from flax.typing import VariableDict
+from loguru import logger
 
 from graph_mlgo.agent.training.types import RunningNorm, Transition
 from graph_mlgo.env.LLVMInline import LLVMInlineEnv
+from graph_mlgo.graph.embedding import EMBEDDER_TYPE_MAP, TrivialEmbedder
 
 if TYPE_CHECKING:
     from graph_mlgo.agent.config import PPOConfig
@@ -179,3 +181,33 @@ def ppo_loss(
 
     total_loss = actor_loss + cfg.vf_coef * value_loss - cfg.ent_coef * entropy_loss
     return total_loss, (actor_loss, value_loss, entropy_loss)
+
+
+def load_embedder(config: "PPOConfig", rng: jax.Array) -> "Embedder":
+    if config.embedder_train_config is not None:
+        embedding_type = config.embedder_train_config.embedding_type
+        embedder_cls = EMBEDDER_TYPE_MAP.get(embedding_type)
+        assert embedder_cls is not None, f"Unknown embedder type: {embedding_type}"
+
+        embedder = embedder_cls.load(
+            config=config.embedder_train_config,
+            rng=rng,
+        )
+
+        logger.info(
+            f"Loaded embedder from training config: {embedding_type} at {config.embedder_train_config.checkpoint_dir}"
+        )
+    elif config.embedder_path_and_type is None:
+        embedder = TrivialEmbedder()
+        logger.info("Loaded trivial embedder")
+    else:
+        checkpoint_path, embedding_type = config.embedder_path_and_type
+        embedder_cls = EMBEDDER_TYPE_MAP.get(embedding_type)
+        assert embedder_cls is not None, f"Unknown embedder type: {embedding_type}"
+
+        embedder = embedder_cls.load(checkpoint_path=checkpoint_path, rng=rng)
+        logger.info(
+            f"Loaded pretrained embedder: {embedding_type} from {checkpoint_path}"
+        )
+
+    return embedder

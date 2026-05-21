@@ -1,4 +1,3 @@
-from graph_mlgo.constants import MAX_NODES
 from collections import defaultdict
 from typing import TYPE_CHECKING, cast
 
@@ -7,14 +6,16 @@ import jax.numpy as jnp
 import numpy as np
 from flax.typing import VariableDict
 
+from graph_mlgo.constants import MAX_NODES
+
 if TYPE_CHECKING:
     from graph_mlgo.graph import Graph
-    from graph_mlgo.graph.embedding import GraphSAGENet
+    from graph_mlgo.graph.embedding.networks import EmbeddingNet
 
 
-def graphsage_loss(
+def contrastive_loss(
     params: VariableDict,
-    model: "GraphSAGENet",
+    model: "EmbeddingNet",
     h_in: jnp.ndarray,
     neighbor_indices: list[jnp.ndarray],
     u_idx: jnp.ndarray,
@@ -105,6 +106,7 @@ def extract_neighborhood(
         neighbor_indices.append(layer_indices)
 
     return features, neighbor_indices
+
 
 def pad_neighborhood(
     feat_np: np.ndarray,

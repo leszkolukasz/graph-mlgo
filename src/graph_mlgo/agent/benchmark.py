@@ -11,9 +11,8 @@ from tqdm import tqdm
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
-from graph_mlgo.agent.utils import make_env, normalize
+from graph_mlgo.agent.utils import load_embedder, make_env, normalize
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
 from graph_mlgo.graph.graph import Graph
 from graph_mlgo.ir import compile_module
 
@@ -24,16 +23,9 @@ def run_benchmark(checkpoint_dir: str):
 
     dataset = ComPileDataset(config.dataset_path)
     rng = jax.random.PRNGKey(config.seed)
+    emb_rng, train_rng, rng = jax.random.split(rng, 3)
 
-    if config.embedder_train_config is not None:
-        embedder = GraphSAGEEmbedder.load(
-            checkpoint_path=config.embedder_train_config.checkpoint_dir,
-            rng=rng,
-        )
-    elif config.embedder_path is None:
-        embedder = TrivialEmbedder()
-    else:
-        embedder = GraphSAGEEmbedder.load(checkpoint_path=config.embedder_path, rng=rng)
+    embedder = load_embedder(config, emb_rng)
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -52,8 +44,7 @@ def run_benchmark(checkpoint_dir: str):
     )
     trainer = PPOTrainer(config, dummy_env, agent)
 
-    rng = jax.random.PRNGKey(config.seed)
-    runner_state = trainer.init_runner(rng)
+    runner_state = trainer.init_runner(train_rng)
 
     options = CheckpointManagerOptions(max_to_keep=3, create=False)
     mngr = CheckpointManager(os.path.abspath(checkpoint_dir), options=options)

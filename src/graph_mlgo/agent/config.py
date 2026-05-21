@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -15,7 +16,9 @@ class PPOConfig:
     dataset_path: str
     checkpoint_dir: str = CHECKPOINT_DIR
 
-    embedder_path: str | None = None  # load existing embedder
+    embedder_path_and_type: tuple[str, Literal["graphsage", "gat"]] | None = (
+        None  # load existing embedder
+    )
     embedder_train_config: EmbeddingConfig | None = None  # train new embedder
 
     total_timesteps: int = 10_000_000

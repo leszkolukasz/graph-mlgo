@@ -13,7 +13,7 @@ from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
-    GraphSAGETrainer,
+    EmbeddingTrainer,
 )
 from graph_mlgo.graph.embedding.utils import sample_training_batches
 
@@ -24,12 +24,13 @@ ENABLE_WANDB = False
 def run_training(config: EmbeddingConfig | None):
     if config is None:
         config = EmbeddingConfig.load()
-        logger.info(f"Loaded SAGE config from checkpoint: {config}")
+        logger.info(f"Loaded embedding config from checkpoint: {config}")
     else:
-        logger.info(f"Using provided SAGE config: {config}")
+        logger.info(f"Using provided embedding config: {config}")
 
     dataset = ComPileDataset(config.dataset_path)
 
+    logger.info(f"Embedding type: {config.embedding_type}")
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training graphs and {len(dataset.test)} test graphs."
     )
@@ -40,7 +41,7 @@ def run_training(config: EmbeddingConfig | None):
 
     rng = jax.random.PRNGKey(config.seed)
 
-    trainer, runner_state, start_update = GraphSAGETrainer.load(rng=rng, config=config)
+    trainer, runner_state, start_update = EmbeddingTrainer.load(rng=rng, config=config)
     update_fn = trainer.make_update_fn()
 
     if start_update > 0:
@@ -52,7 +53,7 @@ def run_training(config: EmbeddingConfig | None):
 
     bar = tqdm(
         range(start_update, total_updates),
-        desc="Training GraphSAGE",
+        desc="Training",
         unit="update",
         initial=start_update,
         total=total_updates,
@@ -131,20 +132,18 @@ def run_training(config: EmbeddingConfig | None):
                 update_idx += 1
 
     trainer.mngr.wait_until_finished()
-    logger.info("GraphSAGE Training completed after %.2f seconds.", time.time() - start)
+    logger.info("Embedding Training completed after %.2f seconds.", time.time() - start)
 
 
 if __name__ == "__main__":
-    config = EmbeddingConfig(
-        dataset_path="./data/ComPile-1.0GB",
-    )
+    config = EmbeddingConfig(dataset_path="./data/ComPile-1.0GB", embedding_type="gat")
     # config = None
 
     if len(sys.argv) > 1:
         run_id = str(sys.argv[1])
         logger.info(f"Run id: {run_id}")
     else:
-        run_id = f"graphsage_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
+        run_id = f"embedding_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         logger.info(f"No run id provided. Using timestamp: {run_id}")
 
     if ENABLE_WANDB:

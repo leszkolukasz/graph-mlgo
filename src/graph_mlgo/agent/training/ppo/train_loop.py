@@ -12,13 +12,13 @@ import wandb
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.training.ppo.evaluator import PPOEvaluator
 from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
-from graph_mlgo.agent.utils import make_env
+from graph_mlgo.agent.utils import load_embedder, make_env
 from graph_mlgo.dataset import ComPileDataset
-from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
+from graph_mlgo.graph.embedding import NetEmbedder
 from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
-    GraphSAGERunnerState,
-    GraphSAGETrainer,
+    EmbeddingRunnerState,
+    EmbeddingTrainer,
 )
 
 RUNNING_STAT_WINDOW = 100
@@ -35,26 +35,17 @@ def run_training(config: PPOConfig | None):
     dataset = ComPileDataset(config.dataset_path)
 
     rng: jax.Array = jax.random.PRNGKey(config.seed)
-    ppo_rng, sage_rng, eval_rng = jax.random.split(rng, 3)
+    ppo_rng, emb_trainer_rng, emb_rng, eval_rng = jax.random.split(rng, 4)
 
-    sage_trainer: GraphSAGETrainer | None = None
-    sage_runner_state: GraphSAGERunnerState | None = None
+    embedding_trainer: EmbeddingTrainer | None = None
+    embedding_runner_state: EmbeddingRunnerState | None = None
 
     if config.embedder_train_config is not None:
-        sage_trainer, sage_runner_state, _ = GraphSAGETrainer.load(
-            rng=sage_rng, config=config.embedder_train_config
+        embedding_trainer, embedding_runner_state, _ = EmbeddingTrainer.load(
+            rng=emb_trainer_rng, config=config.embedder_train_config
         )
-        embedder = GraphSAGEEmbedder(
-            net=sage_trainer.model,
-            params=sage_runner_state.train_state.params,
-            config=config.embedder_train_config,
-        )
-    elif config.embedder_path is None:
-        embedder = TrivialEmbedder()
-    else:
-        embedder = GraphSAGEEmbedder.load(
-            checkpoint_path=config.embedder_path, rng=sage_rng
-        )
+
+    embedder = load_embedder(config, emb_rng)
 
     logger.info(
         f"Dataset loaded with {len(dataset.train)} training samples and {len(dataset.test)} test samples."
@@ -89,10 +80,10 @@ def run_training(config: PPOConfig | None):
 
     start = time.time()
     if start_update > 0:
-        logger.info(f"Found checkpoint. Resuming from update {start_update}.")
+        logger.info(f"Found PPO checkpoint. Resuming from update {start_update}.")
     else:
         logger.info(
-            "No checkpoints found in the folder. Starting training from scratch."
+            "No PPO checkpoints found in the folder. Starting training from scratch."
         )
 
     bar = tqdm(
@@ -109,8 +100,8 @@ def run_training(config: PPOConfig | None):
     last_eval_return = None
 
     for update_idx in bar:
-        ppo_runner_state, sage_runner_state, metrics = update_fn(
-            ppo_runner_state, sage_runner_state
+        ppo_runner_state, embedding_runner_state, metrics = update_fn(
+            ppo_runner_state, embedding_runner_state
         )
 
         do_eval = (
@@ -156,11 +147,11 @@ def run_training(config: PPOConfig | None):
         if do_eval:
             eval_rng, eval_step_rng = jax.random.split(eval_rng)
 
-            if sage_runner_state is not None:
+            if embedding_runner_state is not None:
                 # logger.info("Updating embedder parameters for evaluation.")
                 embedder = env.unwrapped.embedder  # ty: ignore
-                assert isinstance(embedder, GraphSAGEEmbedder)
-                embedder.params = sage_runner_state.train_state.params
+                assert isinstance(embedder, NetEmbedder)
+                embedder.params = embedding_runner_state.train_state.params
 
             eval_metrics = eval_fn(
                 ppo_runner_state.train_state, ppo_runner_state.obs_norm, eval_step_rng
@@ -175,9 +166,9 @@ def run_training(config: PPOConfig | None):
 
         if do_checkpoint:
             trainer.save_checkpoint(ppo_runner_state, update_idx)
-            if sage_trainer is not None:
-                assert sage_runner_state is not None
-                sage_trainer.save_checkpoint(sage_runner_state, update_idx)
+            if embedding_trainer is not None:
+                assert embedding_runner_state is not None
+                embedding_trainer.save_checkpoint(embedding_runner_state, update_idx)
 
         if last_eval_return is not None:
             postfix_dict["eval_ret"] = f"{last_eval_return:.1f}"
@@ -185,19 +176,21 @@ def run_training(config: PPOConfig | None):
         bar.set_postfix(postfix_dict)
 
     trainer.mngr.wait_until_finished()
-    if sage_trainer is not None:
-        sage_trainer.mngr.wait_until_finished()
+    if embedding_trainer is not None:
+        embedding_trainer.mngr.wait_until_finished()
 
     logger.info("Training completed after %.2f seconds.", time.time() - start)
 
 
 if __name__ == "__main__":
-    sage_config = EmbeddingConfig(dataset_path="./data/ComPile-1.0GB")
+    embedding_config = EmbeddingConfig(
+        dataset_path="./data/ComPile-1.0GB", embedding_type="gat"
+    )
 
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",
         # embedder_path="./models/graphsage",
-        embedder_train_config=sage_config,
+        embedder_train_config=embedding_config,
         hidden_sizes=(128, 128),
     )
 
