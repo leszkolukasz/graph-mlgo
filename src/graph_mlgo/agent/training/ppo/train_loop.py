@@ -15,7 +15,7 @@ from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import make_env
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import GraphSAGEEmbedder, TrivialEmbedder
-from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     GraphSAGERunnerState,
     GraphSAGETrainer,
@@ -192,7 +192,7 @@ def run_training(config: PPOConfig | None):
 
 
 if __name__ == "__main__":
-    sage_config = GraphSageConfig(dataset_path="./data/ComPile-1.0GB")
+    sage_config = EmbeddingConfig(dataset_path="./data/ComPile-1.0GB")
 
     config = PPOConfig(
         dataset_path="./data/ComPile-1.0GB",

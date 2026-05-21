@@ -1,3 +1,4 @@
+from graph_mlgo.constants import MAX_NODES
 from collections import defaultdict
 from typing import TYPE_CHECKING, cast
 
@@ -104,6 +105,43 @@ def extract_neighborhood(
         neighbor_indices.append(layer_indices)
 
     return features, neighbor_indices
+
+def pad_neighborhood(
+    feat_np: np.ndarray,
+    indices_np: list[np.ndarray],
+    max_nodes: int = MAX_NODES,
+    pad_id: int = -1,
+) -> tuple[np.ndarray, list[np.ndarray]]:
+    current_num_nodes = feat_np.shape[0]
+
+    if current_num_nodes > max_nodes:
+        raise ValueError(
+            f"Subgraph exceeds MAX_NODES: {current_num_nodes} > {max_nodes}"
+        )
+
+    pad_size = max_nodes - current_num_nodes
+
+    feat_padded = np.pad(
+        feat_np,
+        ((0, pad_size), (0, 0)),
+        mode="constant",
+        constant_values=0.0,
+    )
+
+    indices_padded = []
+    for ind in indices_np:
+        num_targets = ind.shape[0]
+        pad_targets = max_nodes - num_targets
+
+        ind_padded = np.pad(
+            ind,
+            ((0, pad_targets), (0, 0)),
+            mode="constant",
+            constant_values=pad_id,
+        )
+        indices_padded.append(ind_padded)
+
+    return feat_padded, indices_padded
 
 
 def sample_neighbors(*, graph: "Graph", node: str, num_neighbours: int) -> list[str]:

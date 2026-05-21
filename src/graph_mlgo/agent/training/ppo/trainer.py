@@ -11,6 +11,7 @@ import orbax.checkpoint as ocp
 from flax.training.train_state import TrainState
 from flax.typing import VariableDict
 from loguru import logger
+import flax.linen as nn
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
@@ -527,7 +528,7 @@ class PPOTrainer:
                 embedder = env.unwrapped.embedder  # type: ignore
                 assert isinstance(embedder, GraphSAGEEmbedder)
                 embedder.params = sage_runner_state.train_state.params
-                logger.info("Updated embedder parameters for PPO update.")
+                # logger.info("Updated embedder parameters for PPO update.")
 
             for _ in range(cfg.rollout_length):
                 action, value, log_prob, obs_norm, raw_obs, rng = jax_act(state)

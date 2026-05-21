@@ -5,13 +5,14 @@ from typing import Literal
 
 import yaml
 
-CHECKPOINT_DIR = os.path.abspath("./models/graphsage")
+CHECKPOINT_DIR = os.path.abspath("./models/embedding")
 
 
 @dataclass
-class GraphSageConfig:
+class EmbeddingConfig:
     dataset_path: str
     checkpoint_dir: str = CHECKPOINT_DIR
+    embedding_type: Literal["graphsage", "gat"] = "graphsage"
 
     depth: int = 4
     num_neighbours: int = 5
@@ -31,14 +32,14 @@ class GraphSageConfig:
     checkpoint_every_updates: int = 10000
 
     @classmethod
-    def load(cls, path: str | Path | None = None) -> "GraphSageConfig":
+    def load(cls, path: str | Path | None = None) -> "EmbeddingConfig":
         return cls.from_file(path)
 
     def save(self, path: str | None = None) -> None:
         self.to_file(path or os.path.join(self.checkpoint_dir, "config.yaml"))
 
     @classmethod
-    def from_file(cls, path: str | Path | None) -> "GraphSageConfig":
+    def from_file(cls, path: str | Path | None) -> "EmbeddingConfig":
         if path is None:
             path = os.path.join(CHECKPOINT_DIR, "config.yaml")
 

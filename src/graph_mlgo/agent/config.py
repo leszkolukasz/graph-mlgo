@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 from graph_mlgo.constants import MAX_EDGES
-from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.config import EmbeddingConfig
 
 CHECKPOINT_DIR = os.path.abspath("./models/ppo")
 
@@ -16,7 +16,7 @@ class PPOConfig:
     checkpoint_dir: str = CHECKPOINT_DIR
 
     embedder_path: str | None = None  # load existing embedder
-    embedder_train_config: GraphSageConfig | None = None  # train new embedder
+    embedder_train_config: EmbeddingConfig | None = None  # train new embedder
 
     total_timesteps: int = 10_000_000
     num_envs: int = 1

@@ -13,7 +13,7 @@ from flax.typing import VariableDict
 from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding import GraphSAGENet
 from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
-from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.constants import NODE_FEATURES_DIM
 from graph_mlgo.graph.embedding.utils import extract_neighborhood, graphsage_loss
 
@@ -23,11 +23,11 @@ class GraphSAGERunnerState(NamedTuple):
 
 
 class GraphSAGETrainer:
-    config: GraphSageConfig
+    config: EmbeddingConfig
     model: GraphSAGENet
     mngr: ocp.CheckpointManager
 
-    def __init__(self, *, model: GraphSAGENet, config: GraphSageConfig):
+    def __init__(self, *, model: GraphSAGENet, config: EmbeddingConfig):
         self.model = model
         self.config = config
 
@@ -40,7 +40,7 @@ class GraphSAGETrainer:
         *,
         rng: jax.Array,
         checkpoint_path: str | None = None,
-        config: GraphSageConfig | None = None,
+        config: EmbeddingConfig | None = None,
     ) -> tuple["GraphSAGETrainer", GraphSAGERunnerState, int]:
         assert checkpoint_path is not None or config is not None, (
             "Must provide either checkpoint_path or config to load GraphSAGETrainer"
@@ -50,7 +50,7 @@ class GraphSAGETrainer:
 
         if config is None:
             config_path = cp_path / "config.yaml"
-            config = GraphSageConfig.from_file(config_path)
+            config = EmbeddingConfig.from_file(config_path)
 
         model = GraphSAGENet(
             depth=config.depth,

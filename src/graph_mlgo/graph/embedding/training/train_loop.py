@@ -11,7 +11,7 @@ from tqdm import tqdm
 import wandb
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph import Graph
-from graph_mlgo.graph.embedding.config import GraphSageConfig
+from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     GraphSAGETrainer,
 )
@@ -21,9 +21,9 @@ RUNNING_STAT_WINDOW = 100
 ENABLE_WANDB = False
 
 
-def run_training(config: GraphSageConfig | None):
+def run_training(config: EmbeddingConfig | None):
     if config is None:
-        config = GraphSageConfig.load()
+        config = EmbeddingConfig.load()
         logger.info(f"Loaded SAGE config from checkpoint: {config}")
     else:
         logger.info(f"Using provided SAGE config: {config}")
@@ -135,7 +135,7 @@ def run_training(config: GraphSageConfig | None):
 
 
 if __name__ == "__main__":
-    config = GraphSageConfig(
+    config = EmbeddingConfig(
         dataset_path="./data/ComPile-1.0GB",
     )
     # config = None
