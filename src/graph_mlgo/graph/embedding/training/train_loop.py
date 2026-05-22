@@ -136,7 +136,13 @@ def run_training(config: EmbeddingConfig | None):
 
 
 if __name__ == "__main__":
-    config = EmbeddingConfig(dataset_path="./data/ComPile-1.0GB", embedding_type="gat")
+    typ = "gat"
+
+    config = EmbeddingConfig(
+        dataset_path="./data/ComPile-1.0GB",
+        embedding_type=typ,
+        checkpoint_dir=f"./models/embedding/{typ}",
+    )
     # config = None
 
     if len(sys.argv) > 1:

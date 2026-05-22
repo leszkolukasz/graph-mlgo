@@ -32,6 +32,7 @@ from graph_mlgo.env.LLVMInline import Observation
 from graph_mlgo.graph.embedding import NetEmbedder
 from graph_mlgo.graph.embedding.networks import EmbeddingNet
 from graph_mlgo.graph.embedding.training.trainer import EmbeddingRunnerState
+from graph_mlgo.graph.embedding.utils import concatenate_parts
 
 
 class PPOTrainer:
@@ -169,15 +170,19 @@ class PPOTrainer:
 
                 batched_apply = jax.vmap(emb_net.apply, in_axes=(None, 0, 0))
                 aux = raw_obs.parts.aux
-                new_edge_embeds = batched_apply(emb_params, aux.h, aux.indices)
+                new_edge_embeds = batched_apply(
+                    emb_params, aux.h, aux.indices, aux.edge_types
+                )
                 edge_embed = jnp.concatenate(
                     [new_edge_embeds[:, 0, :], new_edge_embeds[:, 1, :]], axis=-1
                 )
                 parts = raw_obs.parts
-                return jnp.concatenate(
-                    [parts.global_feat, edge_embed, parts.edge_mult, parts.const_ratio],
-                    axis=-1,
+                replaced_parts = replace(
+                    parts,
+                    edge_embed=edge_embed,
                 )
+                return concatenate_parts(replaced_parts)
+
             return raw_obs.embedding
 
         def _jax_act(

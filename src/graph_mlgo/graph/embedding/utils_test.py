@@ -34,8 +34,12 @@ if __name__ == "__main__":
     depth = 2
     num_neighbours = 3
 
-    features, neighbor_indices = extract_neighborhood(
-        graph=graph, batch=batch, depth=depth, num_neighbours=num_neighbours
+    features, neighbor_indices, edge_types = extract_neighborhood(
+        graph=graph,
+        batch=batch,
+        depth=depth,
+        num_neighbours=num_neighbours,
+        use_in_edges=True,
     )
 
     print("\n=== EXTRACT_NEIGHBORHOOD ===")
@@ -49,3 +53,5 @@ if __name__ == "__main__":
             f" - Shape: {indices.shape} -> (Number of targets in the layer, num_neighbours)"
         )
         print(f" - Index matrix:\n{indices}")
+
+    print(f"\nEdge types:\n{edge_types}")

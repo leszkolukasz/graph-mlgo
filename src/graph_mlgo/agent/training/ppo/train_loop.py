@@ -183,8 +183,12 @@ def run_training(config: PPOConfig | None):
 
 
 if __name__ == "__main__":
+    typ = "graphsage"
+
     embedding_config = EmbeddingConfig(
-        dataset_path="./data/ComPile-1.0GB", embedding_type="gat"
+        dataset_path="./data/ComPile-1.0GB",
+        embedding_type=typ,
+        checkpoint_dir=f"./models/embedding/{typ}",
     )
 
     config = PPOConfig(

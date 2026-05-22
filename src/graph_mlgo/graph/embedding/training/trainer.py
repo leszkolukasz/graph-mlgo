@@ -117,7 +117,9 @@ class EmbeddingTrainer:
             for _ in range(self.model.depth)
         ]
 
-        params = self.model.init(rng, dummy_h, dummy_indices)
+        dummy_parts = jnp.zeros((1,), dtype=jnp.int32)
+
+        params = self.model.init(rng, dummy_h, dummy_indices, dummy_parts)
 
         tx = optax.chain(
             optax.clip_by_global_norm(self.config.max_grad_norm),
@@ -142,6 +144,7 @@ class EmbeddingTrainer:
             train_state: TrainState,
             h_in: jnp.ndarray,
             neighbor_indices: list[jnp.ndarray],
+            edge_types: list[jnp.ndarray],
             u_idx: jnp.ndarray,
             v_idx: jnp.ndarray,
             neg_idx: jnp.ndarray,
@@ -149,7 +152,14 @@ class EmbeddingTrainer:
 
             def loss_fn(params: VariableDict):
                 return contrastive_loss(
-                    params, model, h_in, neighbor_indices, u_idx, v_idx, neg_idx
+                    params,
+                    model,
+                    h_in,
+                    neighbor_indices,
+                    edge_types,
+                    u_idx,
+                    v_idx,
+                    neg_idx,
                 )
 
             grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
@@ -163,6 +173,7 @@ class EmbeddingTrainer:
             [
                 TrainState,
                 jnp.ndarray,
+                list[jnp.ndarray],
                 list[jnp.ndarray],
                 jnp.ndarray,
                 jnp.ndarray,
@@ -183,11 +194,12 @@ class EmbeddingTrainer:
             for neg_list in batch_neg:
                 all_target_nodes.extend(neg_list)
 
-            h_np, neighbor_indices_np = extract_neighborhood(
+            h_np, neighbor_indices_np, edge_types_np = extract_neighborhood(
                 graph=graph,
                 batch=all_target_nodes,
                 depth=self.config.depth,
                 num_neighbours=self.config.num_neighbours,
+                use_in_edges=self.config.use_in_edges,
             )
 
             B = len(batch_u)
@@ -201,6 +213,7 @@ class EmbeddingTrainer:
             neighbor_indices_jax = [
                 jnp.asarray(idx, dtype=jnp.int32) for idx in neighbor_indices_np
             ]
+            edge_types_jax = [jnp.asarray(et, dtype=jnp.int32) for et in edge_types_np]
             u_idx_jax = jnp.asarray(u_idx)
             v_idx_jax = jnp.asarray(v_idx)
             neg_idx_jax = jnp.asarray(neg_idx)
@@ -209,6 +222,7 @@ class EmbeddingTrainer:
                 runner_state.train_state,
                 h_jax,
                 neighbor_indices_jax,
+                edge_types_jax,
                 u_idx_jax,
                 v_idx_jax,
                 neg_idx_jax,

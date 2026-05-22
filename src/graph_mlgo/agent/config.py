@@ -62,6 +62,7 @@ class PPOConfig:
         self.batch_size = self.num_envs * self.rollout_length
         self.num_minibatches = self.batch_size // self.minibatch_size
         self.num_updates = self.total_timesteps // self.batch_size
+        self.checkpoint_dir = os.path.abspath(self.checkpoint_dir)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "PPOConfig":

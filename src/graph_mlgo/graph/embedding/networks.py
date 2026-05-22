@@ -19,6 +19,9 @@ class GraphSageNet(EmbeddingNet):
     activation: Callable = nn.sigmoid
 
     def setup(self):
+        self.input_proj = nn.Dense(self.hidden_dim, name="input_proj")
+        self.edge_embedder = nn.Embed(num_embeddings=4, features=self.hidden_dim)
+
         self.W = [
             nn.Dense(
                 self.output_dim if d == self.depth - 1 else self.hidden_dim,
@@ -35,17 +38,25 @@ class GraphSageNet(EmbeddingNet):
 
     # h: (N, node_feat_dim)
     # neighbor_indices: list of (num_targets, num_neighbours, hidden_dim)
+    # edge_types: list of (num_targets, num_neighbours)
     # Returns: (N, output_dim)
     def __call__(
-        self, h: jnp.ndarray, neighbor_indices: list[jnp.ndarray]
+        self,
+        h: jnp.ndarray,
+        neighbor_indices: list[jnp.ndarray],
+        edge_types: list[jnp.ndarray],
     ) -> jnp.ndarray:
 
-        # TODO: scan
+        h = self.input_proj(h)
+
         for d in range(self.depth):
             num_targets = neighbor_indices[d].shape[0]
 
             h_target = h[:num_targets]
             h_neighbors = h[neighbor_indices[d]]
+
+            e_emb = self.edge_embedder(edge_types[d])
+            h_neighbors = h_neighbors + e_emb
 
             h_aggregated = self.aggregators[d](h_neighbors)
             h_concat = jnp.concatenate([h_target, h_aggregated], axis=-1)
@@ -77,6 +88,8 @@ class GATNet(EmbeddingNet):
     def setup(self):
         self.input_proj = nn.Dense(self.hidden_dim, name="input_proj")
 
+        self.edge_embedder = nn.Embed(num_embeddings=4, features=self.hidden_dim)
+
         self.attentions = [
             nn.MultiHeadDotProductAttention(
                 num_heads=self.num_heads,
@@ -106,7 +119,10 @@ class GATNet(EmbeddingNet):
             ]
 
     def __call__(
-        self, h: jnp.ndarray, neighbor_indices: list[jnp.ndarray]
+        self,
+        h: jnp.ndarray,
+        neighbor_indices: list[jnp.ndarray],
+        edge_types: list[jnp.ndarray],
     ) -> jnp.ndarray:
         h = self.input_proj(h)
 
@@ -117,6 +133,10 @@ class GATNet(EmbeddingNet):
 
             h_q = jnp.expand_dims(h_norm, axis=1)  # (N, 1, features)
             h_neighbors = h_norm[neighbor_indices[d]]  # (N, num_neighbours, features)
+
+            e_emb = self.edge_embedder(edge_types[d])
+            h_neighbors = h_neighbors + e_emb
+
             h_kv = jnp.concatenate(
                 [h_q, h_neighbors], axis=1
             )  # (N, 1 + num_neighbours, features)

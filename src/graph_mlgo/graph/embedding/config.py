@@ -18,6 +18,7 @@ class EmbeddingConfig:
     num_neighbours: int = 5
     hidden_dim: int = 128
     output_dim: int = 64
+    use_in_edges: bool = True
 
     # GAT
     num_heads = 4
@@ -36,6 +37,9 @@ class EmbeddingConfig:
     num_negatives: int = 10
 
     checkpoint_every_updates: int = 10000
+
+    def __post_init__(self):
+        self.checkpoint_dir = os.path.abspath(self.checkpoint_dir)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> "EmbeddingConfig":

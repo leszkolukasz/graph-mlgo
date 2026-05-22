@@ -3,86 +3,28 @@ from typing import TYPE_CHECKING, Callable, cast
 
 import jax
 import jax.numpy as jnp
-from flax import struct
 from flax.typing import VariableDict
 
 from graph_mlgo.constants import MAX_NODES
 from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.constants import GLOBAL_FEATURES_DIM, NODE_FEATURES_DIM
 from graph_mlgo.graph.embedding.networks import EmbeddingNet, GATNet, GraphSageNet
-from graph_mlgo.graph.embedding.utils import extract_neighborhood, pad_neighborhood
+from graph_mlgo.graph.embedding.utils import (
+    EmbeddingAux,
+    EmbeddingParts,
+    concatenate_parts,
+    extract_neighborhood,
+    pad_neighborhood,
+)
 
 if TYPE_CHECKING:
     from graph_mlgo.graph import Edge, Graph
 
 
-@struct.dataclass
-class EmbeddingAux:
-    h: jnp.ndarray
-    indices: list[jnp.ndarray]
-
-    def to_device(self, device: jax.Device) -> "EmbeddingAux":
-        return EmbeddingAux(
-            h=jax.device_put(self.h, device),
-            indices=[jax.device_put(idx, device) for idx in self.indices],
-        )
-
-    def to_cpu(self) -> "EmbeddingAux":
-        return self.to_device(jax.devices("cpu")[0])
-
-    def to_gpu(self) -> "EmbeddingAux":
-        gpus = jax.devices("gpu")
-        if not gpus:
-            raise RuntimeError("No GPU devices available for EmbeddingAux")
-        return self.to_device(gpus[0])
-
-
-@struct.dataclass
-class EmbeddingParts:
-    global_feat: jnp.ndarray
-    edge_embed: jnp.ndarray
-    edge_mult: jnp.ndarray
-    const_ratio: jnp.ndarray
-    aux: EmbeddingAux | None = None
-
-    def to_device(self, device: jax.Device) -> "EmbeddingParts":
-        return EmbeddingParts(
-            global_feat=jax.device_put(self.global_feat, device),
-            edge_embed=jax.device_put(self.edge_embed, device),
-            edge_mult=jax.device_put(self.edge_mult, device),
-            const_ratio=jax.device_put(self.const_ratio, device),
-            aux=self.aux.to_device(device) if self.aux is not None else None,
-        )
-
-    def to_cpu(self) -> "EmbeddingParts":
-        return self.to_device(jax.devices("cpu")[0])
-
-    def to_gpu(self) -> "EmbeddingParts":
-        gpus = jax.devices("gpu")
-        if not gpus:
-            raise RuntimeError("No GPU devices available for EmbeddingParts")
-        return self.to_device(gpus[0])
-
-    @classmethod
-    def empty(cls, embed_dim: int) -> "EmbeddingParts":
-        return cls(
-            global_feat=jnp.zeros(GLOBAL_FEATURES_DIM, dtype=jnp.float32),
-            edge_embed=jnp.zeros(embed_dim, dtype=jnp.float32),
-            edge_mult=jnp.zeros(1, dtype=jnp.float32),
-            const_ratio=jnp.zeros(1, dtype=jnp.float32),
-            aux=None,
-        )
-
-
 class Embedder(ABC):
     def embed(self, edge: "Edge", graph: "Graph") -> tuple[jnp.ndarray, EmbeddingParts]:
         parts = self._get_embedding_parts(edge, graph)
-        return self._concatenate_parts(parts), parts
-
-    def _concatenate_parts(self, parts: EmbeddingParts) -> jnp.ndarray:
-        return jnp.concatenate(
-            [parts.global_feat, parts.edge_embed, parts.edge_mult, parts.const_ratio]
-        )
+        return concatenate_parts(parts), parts
 
     def _get_embedding_parts(self, edge: "Edge", graph: "Graph") -> EmbeddingParts:
         global_feat = graph.get_global_features()
@@ -166,12 +108,16 @@ class NetEmbedder(Embedder):
         self.config = config
 
         def _apply(
-            params: VariableDict, h_in: jnp.ndarray, neigh_indices: list[jnp.ndarray]
+            params: VariableDict,
+            h_in: jnp.ndarray,
+            neigh_indices: list[jnp.ndarray],
+            edge_types: list[jnp.ndarray],
         ) -> jnp.ndarray:
-            return self.net.apply(params, h_in, neigh_indices)  # ty: ignore
+            return self.net.apply(params, h_in, neigh_indices, edge_types)  # ty: ignore
 
         apply_fn_type = Callable[
-            [VariableDict, jnp.ndarray, list[jnp.ndarray]], jnp.ndarray
+            [VariableDict, jnp.ndarray, list[jnp.ndarray], list[jnp.ndarray]],
+            jnp.ndarray,
         ]
         self._jit_apply = cast(apply_fn_type, jax.jit(_apply))
 
@@ -180,27 +126,34 @@ class NetEmbedder(Embedder):
     ) -> tuple[jnp.ndarray, EmbeddingAux | None]:
         u, v = edge
 
-        feat_np, indices_np = extract_neighborhood(
+        feat_np, indices_np, edge_types_np = extract_neighborhood(
             graph=graph,
             batch=[u, v],
             depth=self.config.depth,
             num_neighbours=self.config.num_neighbours,
+            use_in_edges=self.config.use_in_edges,
         )
 
-        feat_np_padded, indices_np_padded = pad_neighborhood(
+        feat_np_padded, indices_np_padded, edge_types_np_padded = pad_neighborhood(
             feat_np=feat_np,
             indices_np=indices_np,
+            edge_types_np=edge_types_np,
             max_nodes=MAX_NODES,
             pad_id=self.pad_id,
         )
 
         feat_jax = jnp.asarray(feat_np_padded, dtype=jnp.float32)
         indices_jax = [jnp.asarray(ind, dtype=jnp.int32) for ind in indices_np_padded]
+        edge_types_jax = [
+            jnp.asarray(et, dtype=jnp.int32) for et in edge_types_np_padded
+        ]
 
-        emb = jnp.asarray(self._jit_apply(self.params, feat_jax, indices_jax))
+        emb = jnp.asarray(
+            self._jit_apply(self.params, feat_jax, indices_jax, edge_types_jax)
+        )
 
         return jnp.concatenate([emb[0], emb[1]]), EmbeddingAux(
-            h=feat_jax, indices=indices_jax
+            h=feat_jax, indices=indices_jax, edge_types=edge_types_jax
         )
 
     def _get_embedding_dim(self) -> int:
