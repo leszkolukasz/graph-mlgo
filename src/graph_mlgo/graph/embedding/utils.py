@@ -27,12 +27,16 @@ class EmbeddingAux:
     h: jnp.ndarray
     indices: list[jnp.ndarray]
     edge_types: list[jnp.ndarray]
+    node_feat: jnp.ndarray | None = None
 
     def to_device(self, device: jax.Device) -> "EmbeddingAux":
         return EmbeddingAux(
             h=jax.device_put(self.h, device),
             indices=[jax.device_put(idx, device) for idx in self.indices],
             edge_types=[jax.device_put(et, device) for et in self.edge_types],
+            node_feat=jax.device_put(self.node_feat, device)
+            if self.node_feat is not None
+            else None,
         )
 
     def to_cpu(self) -> "EmbeddingAux":
@@ -331,5 +335,6 @@ def sample_training_batches(
 
 def concatenate_parts(parts: EmbeddingParts) -> jnp.ndarray:
     return jnp.concatenate(
-        [parts.global_feat, parts.edge_embed, parts.edge_mult, parts.const_ratio]
+        [parts.global_feat, parts.edge_embed, parts.edge_mult, parts.const_ratio],
+        axis=-1,
     )

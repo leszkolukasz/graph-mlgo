@@ -4,7 +4,6 @@ from typing import Callable, cast
 import gymnasium as gym
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 import orbax
 import orbax.checkpoint as ocp
@@ -28,6 +27,7 @@ from graph_mlgo.agent.utils import (
     replace,
     update_running_norm,
 )
+from graph_mlgo.constants import MAX_CKPT_TO_KEEP
 from graph_mlgo.env.LLVMInline import Observation
 from graph_mlgo.graph.embedding import NetEmbedder
 from graph_mlgo.graph.embedding.networks import EmbeddingNet
@@ -46,7 +46,9 @@ class PPOTrainer:
         self.env = env
         self.agent = agent
 
-        options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
+        options = ocp.CheckpointManagerOptions(
+            max_to_keep=MAX_CKPT_TO_KEEP, create=True
+        )
         self.mngr = ocp.CheckpointManager(config.checkpoint_dir, options=options)
 
     @classmethod
@@ -74,7 +76,7 @@ class PPOTrainer:
 
         trainer = cast("PPOTrainer", cls(config, env, agent))
 
-        runner_state = trainer.init_runner(rng)
+        runner_state = trainer.init_runner(rng=rng, seed=config.seed)
 
         mngr = ocp.CheckpointManager(checkpoint_path)
         latest_step = mngr.latest_step()
@@ -101,9 +103,9 @@ class PPOTrainer:
         )
         self.mngr.save(update_idx, args=orbax.checkpoint.args.PyTreeSave(runner_state))
 
-    def init_runner(self, rng: jax.Array) -> PPORunnerState:
+    def init_runner(self, *, rng: jax.Array, seed: int) -> PPORunnerState:
         rng, init_rng = jax.random.split(rng, 2)
-        obs, _ = self.env.reset()
+        obs, _ = self.env.reset(seed=seed)
         obs_dim = obs.embedding.shape[-1]
 
         params = self.agent.init(init_rng, jnp.zeros((1, obs_dim)))
@@ -155,20 +157,16 @@ class PPOTrainer:
 
         if isinstance(env.unwrapped.embedder, NetEmbedder):  # ty: ignore
             emb_net = cast(EmbeddingNet, env.unwrapped.embedder.net)  # ty: ignore
-            logger.info(
-                "Found EmbeddingNet in env. Will jointly train the embedder with PPO."
-            )
+            logger.info("Found EmbeddingNet in env.")
         else:
             emb_net = None
-            logger.info(
-                "No EmbeddingNet found in env. PPO will train without updating the embedder."
-            )
+            logger.info("No EmbeddingNet found in env.")
 
         def recompute_embeddings(emb_params: VariableDict | None, raw_obs: Observation):
             if emb_params is not None:
                 assert emb_net is not None and raw_obs.parts.aux is not None
 
-                batched_apply = jax.vmap(emb_net.apply, in_axes=(None, 0, 0))
+                batched_apply = jax.vmap(emb_net.apply, in_axes=(None, 0, 0, 0))
                 aux = raw_obs.parts.aux
                 new_edge_embeds = batched_apply(
                     emb_params, aux.h, aux.indices, aux.edge_types
@@ -176,6 +174,11 @@ class PPOTrainer:
                 edge_embed = jnp.concatenate(
                     [new_edge_embeds[:, 0, :], new_edge_embeds[:, 1, :]], axis=-1
                 )
+
+                if raw_obs.parts.aux.node_feat is not None:
+                    node_feat = raw_obs.parts.aux.node_feat
+                    edge_embed = jnp.concatenate([edge_embed, node_feat], axis=-1)
+
                 parts = raw_obs.parts
                 replaced_parts = replace(
                     parts,
@@ -534,8 +537,7 @@ class PPOTrainer:
             for _ in range(cfg.rollout_length):
                 action, value, log_prob, obs_norm, raw_obs, rng = jax_act(state)
 
-                action_np = np.asarray(action)
-                next_obs, reward, terminated, truncated, _ = env.step(action_np)
+                next_obs, reward, terminated, truncated, _ = env.step(action)
 
                 next_obs_jax = next_obs.to_gpu()
                 reward_jax = jnp.asarray(reward, dtype=jnp.float32)

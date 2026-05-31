@@ -108,12 +108,19 @@ class SingleToBatchWrapper(gym.Wrapper):
 
 
 def make_env(
-    dataset: Dataset, embedder: "Embedder", num_envs: int, episode_length: int = 1000
+    *,
+    dataset: Dataset,
+    embedder: "Embedder",
+    num_envs: int,
+    reward_density: int | None = None,
+    episode_length: int = 1000,
 ) -> gym.Env:
     def make_single_env(idx: int):
         dataset_shard = dataset.shard(num_shards=num_envs, index=idx)
 
-        env = LLVMInlineEnv(dataset=dataset_shard, embedder=embedder)
+        env = LLVMInlineEnv(
+            dataset=dataset_shard, embedder=embedder, reward_density=reward_density
+        )
         env = gym.wrappers.TimeLimit(env, max_episode_steps=episode_length)
 
         return env

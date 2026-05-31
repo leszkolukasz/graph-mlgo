@@ -11,6 +11,7 @@ from flax.training.train_state import TrainState
 from flax.typing import VariableDict
 from loguru import logger
 
+from graph_mlgo.constants import MAX_CKPT_TO_KEEP
 from graph_mlgo.graph import Graph
 from graph_mlgo.graph.embedding import GATNet, GraphSageNet
 from graph_mlgo.graph.embedding.aggregator import NAME_TO_CLASS
@@ -33,7 +34,9 @@ class EmbeddingTrainer:
         self.model = model
         self.config = config
 
-        options = ocp.CheckpointManagerOptions(max_to_keep=3, create=True)
+        options = ocp.CheckpointManagerOptions(
+            max_to_keep=MAX_CKPT_TO_KEEP, create=True
+        )
         self.mngr = ocp.CheckpointManager(config.checkpoint_dir, options=options)
 
     @classmethod
@@ -73,6 +76,7 @@ class EmbeddingTrainer:
                 hidden_dim=config.hidden_dim,
                 output_dim=config.output_dim,
                 num_heads=config.num_heads,
+                ffn_scale=config.ffn_scale,
             )
         )
 

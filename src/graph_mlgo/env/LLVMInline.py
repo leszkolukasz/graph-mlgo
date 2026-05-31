@@ -36,11 +36,18 @@ class Observation:
 
 
 class LLVMInlineEnv(gym.Env):
-    def __init__(self, dataset: Dataset, embedder: Embedder):
+    dataset: Dataset
+    embedder: Embedder
+    reward_density: int | None
+
+    def __init__(
+        self, dataset: Dataset, embedder: Embedder, reward_density: int | None = None
+    ):
         super(LLVMInlineEnv, self).__init__()
 
         self.dataset = dataset
         self.embedder = embedder
+        self.reward_density = reward_density
 
         # 0 = no inline, 1 = inline
         self.action_space = spaces.Discrete(2)
@@ -56,6 +63,7 @@ class LLVMInlineEnv(gym.Env):
         self.baseline_size: int = 0
         self.edge_iterator = None
         self.current_edge: Edge | None = None
+        self.step_count: int = 0
 
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
@@ -80,33 +88,45 @@ class LLVMInlineEnv(gym.Env):
 
         self.baseline_size = self.graph.calc_native_size()
         self.baseline_ir = str(self.graph.module)
+        self.step_count = 0
 
         embed, parts = self.graph.get_edge_embedding(self.current_edge, self.embedder)
         return Observation(embedding=embed, parts=parts), {}
 
     def step(
-        self, action: int | np.ndarray
+        self, action: int | np.ndarray | jnp.ndarray
     ) -> tuple[Observation, float, bool, bool, dict]:
         assert self.graph is not None
         assert self.current_edge is not None
         assert self.edge_iterator is not None
 
-        if isinstance(action, np.ndarray):
-            action = np.argmax(action).item()
+        if isinstance(action, np.ndarray) or isinstance(action, jnp.ndarray):
+            assert action.shape == (), f"Expected scalar action, got shape {action.shape}"
+            action = action.item()
 
         if action == 1:
             self.graph.inline(self.current_edge)
 
         self.current_edge = next(self.edge_iterator, None)
+        self.step_count += 1
 
         terminated = self.current_edge is None
         truncated = False
 
-        reward = 0.0
+        if (
+            self.reward_density is not None
+            and self.step_count % self.reward_density == 0
+            or terminated
+        ):
+            current_size = self.graph.calc_native_size()
+            reward = float(self.baseline_size - current_size)
+            self.baseline_size = current_size
+        else:
+            reward = 0.0
+
         info = {}
 
         if terminated:
-            final_size = self.graph.calc_native_size()
             # final_ir = str(self.graph.module)
 
             # with open("baseline.ll", "w") as f:
@@ -114,10 +134,6 @@ class LLVMInlineEnv(gym.Env):
             # with open("final.ll", "w") as f:
             #     f.write(final_ir)
 
-            reward = float(self.baseline_size - final_size)
-
-            info["initial_size"] = self.baseline_size
-            info["final_size"] = final_size
             info["gain"] = reward
 
             obs_shape = self.observation_space.shape

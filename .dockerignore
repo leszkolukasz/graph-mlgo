@@ -1,0 +1,13 @@
+.git
+.idea
+__pycache__
+*.pyc
+models/
+data/
+*.bin
+*.ll
+*.npy
+wandb/
+logs/
+.direnv
+.ruff_cache

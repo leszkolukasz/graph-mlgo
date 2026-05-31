@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, cast
 
 import distrax
 import jax
@@ -42,7 +42,7 @@ class CriticNet(nn.Module):
 
 class ActorNet(nn.Module):
     hidden_sizes: tuple[int, ...]
-    action_dim: int = 1
+    action_dim: int = 2
     activation: Callable = nn.tanh
 
     @nn.compact
@@ -66,21 +66,13 @@ class ActorNet(nn.Module):
 
         x = self.activation(x)
 
-        mean = nn.Dense(
+        logits = nn.Dense(
             self.action_dim,
             kernel_init=actor_head_init,
             bias_init=nn.initializers.zeros,
         )(x)
 
-        log_std = nn.Dense(
-            self.action_dim,
-            kernel_init=actor_head_init,
-            bias_init=nn.initializers.zeros,
-        )(x)
-
-        log_std = jnp.clip(log_std, -20, 2)
-
-        return mean, log_std
+        return logits
 
 
 class PPOAgent(nn.Module):
@@ -105,49 +97,31 @@ class PPOAgent(nn.Module):
     def actor(self, obs: jnp.ndarray):
         return self.actor_net(obs)
 
-    def _apply_squashing_function(self, mean, action, logp_action):
-        tanh_logp_action = logp_action - jnp.sum(
-            2 * (jnp.log(2) - action - nn.softplus(-2 * action)), axis=-1
-        )
-        tanh_mean = jnp.tanh(mean)
-        tanh_action = jnp.tanh(action)
-        return tanh_action, tanh_mean, tanh_logp_action
-
     def act(self, params, obs: jnp.ndarray, rng: jax.Array):
-        mean, log_std = self.apply(params, obs, method=self.actor)
+        logits = cast(jnp.ndarray, self.apply(params, obs, method=self.actor))
 
-        std = jnp.exp(log_std)  # ty: ignore
-        dist = distrax.MultivariateNormalDiag(mean, std)
+        dist = distrax.Categorical(logits=logits)
 
         act = dist.sample(seed=rng)
         logp_act = dist.log_prob(act)
 
-        squashed_action, deterministic_squashed_action, logp_squashed_action = (
-            self._apply_squashing_function(mean, act, logp_act)
-        )
+        deterministic_act = jnp.argmax(logits, axis=-1)
 
-        return squashed_action, deterministic_squashed_action, logp_squashed_action
+        return act, deterministic_act, logp_act
 
     def get_action_log_prob_and_entropy(
-        self, params, obs: jnp.ndarray, squashed_action: jnp.ndarray
+        self, params, obs: jnp.ndarray, action: jnp.ndarray
     ):
-        mean, log_std = self.apply(params, obs, method=self.actor)
+        logits = cast(jnp.ndarray, self.apply(params, obs, method=self.actor))
 
-        std = jnp.exp(log_std)  # ty: ignore
-        dist = distrax.MultivariateNormalDiag(mean, std)
+        dist = distrax.Categorical(logits=logits)
 
-        def unsquash(act):
-            return jnp.arctanh(jnp.clip(act, -1 + 1e-6, 1 - 1e-6))
-
-        act = unsquash(squashed_action)
-        log_prob = dist.log_prob(act)
+        log_prob = dist.log_prob(action)
         entropy = dist.entropy()
 
-        _, _, squashed_log_prob = self._apply_squashing_function(mean, act, log_prob)
-
-        return squashed_log_prob, entropy
+        return log_prob, entropy
 
     def __call__(self, obs: jnp.ndarray):
-        mean, log_std = self.actor(obs)
+        logits = self.actor(obs)
         value = self.critic(obs)
-        return mean, log_std, value
+        return logits, value

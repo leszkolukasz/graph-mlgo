@@ -40,9 +40,9 @@ class PPOEvaluator:
             )
             rng, act_rng = jax.random.split(rng)
 
-            action, _, _ = agent.act(params, obs_in, act_rng)
+            _, determ_action, _ = agent.act(params, obs_in, act_rng)
 
-            return action, rng
+            return determ_action, rng
 
         def evaluate(
             train_state: VariableDict, obs_norm: RunningNorm, rng: jax.Array
@@ -57,9 +57,7 @@ class PPOEvaluator:
                 obs_jax = jnp.asarray(obs.embedding, dtype=jnp.float32)
                 action_jax, rng = jax_act(train_state.params, obs_norm, obs_jax, rng)  # ty: ignore
 
-                action_np = np.asarray(action_jax)
-
-                next_obs, reward, terminated, truncated, _ = eval_env.step(action_np)
+                next_obs, reward, terminated, truncated, _ = eval_env.step(action_jax)
                 done = np.logical_or(terminated, truncated).astype(np.float32)
 
                 episode_returns += reward

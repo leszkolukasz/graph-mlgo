@@ -1,4 +1,5 @@
 import datetime
+import os
 import sys
 import time
 from dataclasses import asdict
@@ -15,14 +16,13 @@ from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import load_embedder, make_env
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import NetEmbedder
-from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     EmbeddingRunnerState,
     EmbeddingTrainer,
 )
 
-RUNNING_STAT_WINDOW = 100
-ENABLE_WANDB = False
+RUNNING_STAT_WINDOW = 50
+ENABLE_WANDB = True
 
 
 def run_training(config: PPOConfig | None):
@@ -63,6 +63,7 @@ def run_training(config: PPOConfig | None):
         embedder=embedder,
         num_envs=config.num_envs,
         episode_length=config.episode_length,
+        reward_density=config.reward_density,
     )
     eval_env = make_env(
         dataset=dataset.test,
@@ -149,7 +150,7 @@ def run_training(config: PPOConfig | None):
 
             if embedding_runner_state is not None:
                 # logger.info("Updating embedder parameters for evaluation.")
-                embedder = env.unwrapped.embedder  # ty: ignore
+                embedder = eval_env.unwrapped.embedder  # ty: ignore
                 assert isinstance(embedder, NetEmbedder)
                 embedder.params = embedding_runner_state.train_state.params
 
@@ -183,25 +184,34 @@ def run_training(config: PPOConfig | None):
 
 
 if __name__ == "__main__":
-    typ = "graphsage"
+    typ = "gat"
+    dataset_path = "./data/ComPile-4.0GB"
 
-    embedding_config = EmbeddingConfig(
-        dataset_path="./data/ComPile-1.0GB",
-        embedding_type=typ,
-        checkpoint_dir=f"./models/embedding/{typ}",
-    )
+    # embedding_config = EmbeddingConfig(
+    #     dataset_path=dataset_path,
+    #     embedding_type=typ,
+    #     checkpoint_dir=f"./models/embedding/{typ}",
+    # )
+
+    # embedding_config = EmbeddingConfig.load("./models/embedding/gat/final_ppo_gat_pretrained/config.yaml")
 
     config = PPOConfig(
-        dataset_path="./data/ComPile-1.0GB",
-        # embedder_path="./models/graphsage",
-        embedder_train_config=embedding_config,
-        hidden_sizes=(128, 128),
+        dataset_path=dataset_path,
+        # embedder_path_and_type=("./models/embedding/gat/gat_final", "gat"),
+        # embedder_train_config=embedding_config,
+        total_timesteps=333_000,
     )
 
     if len(sys.argv) > 1:
         run_id = str(sys.argv[1])
         logger.info(f"Run id: {run_id}")
         assert ENABLE_WANDB, "WandB must be enabled to use run ids."
+
+        config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
+        if config.embedder_train_config is not None:
+            config.embedder_train_config.checkpoint_dir = os.path.abspath(
+                f"./models/embedding/{typ}/{run_id}"
+            )
     else:
         run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         logger.info(f"No run id provided. Using timestamp: {run_id}")
@@ -211,9 +221,4 @@ if __name__ == "__main__":
             project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
         )
 
-    result = run_training(config)
-
-    logger.info(f"Training finished in {result['elapsed']:.2f}s")
-    logger.info(f"Final train return: {float(result['returns'][-1]):.2f}")
-    logger.info(f"Final eval return: {float(result['eval_returns'][-1]):.2f}")
-    logger.info(f"Finite: {bool(np.all(result['metrics']['is_finite']))}")
+    run_training(config)

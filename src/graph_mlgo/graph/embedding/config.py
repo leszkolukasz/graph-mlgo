@@ -14,14 +14,16 @@ class EmbeddingConfig:
     checkpoint_dir: str = CHECKPOINT_DIR
     embedding_type: Literal["graphsage", "gat"] = "graphsage"
 
-    depth: int = 4
+    depth: int = 8
     num_neighbours: int = 5
     hidden_dim: int = 128
     output_dim: int = 64
     use_in_edges: bool = True
+    retain_node_features: bool = True
 
     # GAT
     num_heads = 4
+    ffn_scale: int | None = 2
 
     # GraphSAGE
     aggregator_type: Literal["mean", "pool"] = "pool"
@@ -64,7 +66,7 @@ class EmbeddingConfig:
                 )
 
         with open(path, "r") as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=yaml.UnsafeLoader)
 
         return cls(**data)
 

@@ -152,12 +152,25 @@ class NetEmbedder(Embedder):
             self._jit_apply(self.params, feat_jax, indices_jax, edge_types_jax)
         )
 
-        return jnp.concatenate([emb[0], emb[1]]), EmbeddingAux(
-            h=feat_jax, indices=indices_jax, edge_types=edge_types_jax
+        emb = jnp.concatenate([emb[0], emb[1]])
+
+        if self.config.retain_node_features:
+            node_feat = jnp.concatenate([feat_jax[0], feat_jax[1]])
+            emb = jnp.concatenate([emb, node_feat])
+        else:
+            node_feat = None
+
+        return emb, EmbeddingAux(
+            h=feat_jax,
+            indices=indices_jax,
+            edge_types=edge_types_jax,
+            node_feat=node_feat,
         )
 
     def _get_embedding_dim(self) -> int:
-        return 2 * self.net.output_dim
+        return 2 * self.net.output_dim + (
+            2 * NODE_FEATURES_DIM if self.config.retain_node_features else 0
+        )
 
 
 class GraphSageEmbedder(NetEmbedder):

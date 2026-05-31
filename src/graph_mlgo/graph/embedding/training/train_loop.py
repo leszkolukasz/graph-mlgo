@@ -1,4 +1,5 @@
 import datetime
+import os
 import sys
 import time
 from dataclasses import asdict
@@ -17,8 +18,8 @@ from graph_mlgo.graph.embedding.training.trainer import (
 )
 from graph_mlgo.graph.embedding.utils import sample_training_batches
 
-RUNNING_STAT_WINDOW = 100
-ENABLE_WANDB = False
+RUNNING_STAT_WINDOW = 50
+ENABLE_WANDB = True
 
 
 def run_training(config: EmbeddingConfig | None):
@@ -139,7 +140,7 @@ if __name__ == "__main__":
     typ = "gat"
 
     config = EmbeddingConfig(
-        dataset_path="./data/ComPile-1.0GB",
+        dataset_path="./data/ComPile-4.0GB",
         embedding_type=typ,
         checkpoint_dir=f"./models/embedding/{typ}",
     )
@@ -148,6 +149,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         run_id = str(sys.argv[1])
         logger.info(f"Run id: {run_id}")
+
+        config.checkpoint_dir = os.path.abspath(f"./models/embedding/{typ}/{run_id}")
     else:
         run_id = f"embedding_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         logger.info(f"No run id provided. Using timestamp: {run_id}")

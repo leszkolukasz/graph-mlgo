@@ -1,3 +1,4 @@
+import dataclasses
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,12 +30,13 @@ class PPOConfig:
     minibatch_size: int = 512
 
     lr: float = 1e-4
-    gamma: float = 0.90
+    gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
     vf_coef: float = 0.5
     ent_coef: float = 0.01
     max_grad_norm: float = 0.5
+    reward_density: int | None = 5
 
     episode_length: int = MAX_EDGES
     hidden_sizes: tuple[int, ...] = (256, 256)
@@ -54,7 +56,7 @@ class PPOConfig:
 
     eval_every_updates: int = 50
     eval_num_envs: int = 1
-    eval_horizon: int = 1000
+    eval_horizon: int = 5000
 
     seed: int = 42
 
@@ -77,9 +79,12 @@ class PPOConfig:
             path = os.path.join(CHECKPOINT_DIR, "config.yaml")
 
         with open(path, "r") as f:
-            data = yaml.safe_load(f)
+            data = yaml.load(f, Loader=yaml.UnsafeLoader)
 
-        return cls(**data)
+        valid_keys = {field.name for field in dataclasses.fields(cls)}
+        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
+
+        return cls(**filtered_data)
 
     def to_file(self, path: str | Path) -> None:
         with open(path, "w") as f:
