@@ -29,7 +29,8 @@ RUN conda build conda-recipes/llvmlite --use-local --python 3.12
 WORKDIR /workspace
 COPY environment.yml conda-lock.yml /workspace/
 
-RUN conda-lock install -n graph-mlgo conda-lock.yml
+RUN conda-lock -f environment.yml -p linux-64 \
+    && conda-lock install -n graph-mlgo conda-lock.yml
 
 COPY . /workspace/
 

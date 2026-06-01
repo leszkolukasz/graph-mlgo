@@ -16,6 +16,7 @@ from graph_mlgo.agent.training.ppo.trainer import PPOTrainer
 from graph_mlgo.agent.utils import load_embedder, make_env
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.embedding import NetEmbedder
+from graph_mlgo.graph.embedding.config import EmbeddingConfig
 from graph_mlgo.graph.embedding.training.trainer import (
     EmbeddingRunnerState,
     EmbeddingTrainer,
@@ -25,12 +26,8 @@ RUNNING_STAT_WINDOW = 50
 ENABLE_WANDB = True
 
 
-def run_training(config: PPOConfig | None):
-    if config is None:
-        config = PPOConfig.load()
-        logger.info(f"Loaded PPO config from checkpoint: {config}")
-    else:
-        logger.info(f"Using provided PPO config: {config}")
+def run_training(config: PPOConfig, upload_artifact: bool = False):
+    logger.info(f"Using PPO config: {config}")
 
     dataset = ComPileDataset(config.dataset_path)
 
@@ -182,8 +179,23 @@ def run_training(config: PPOConfig | None):
 
     logger.info("Training completed after %.2f seconds.", time.time() - start)
 
+    if ENABLE_WANDB and upload_artifact:
+        logger.info("Uploading artifacts to W&B...")
+        assert wandb.run is not None
+        
+        ppo_artifact = wandb.Artifact(name=f"ppo-model-{wandb.run.id}", type="model")
+        ppo_artifact.add_dir(config.checkpoint_dir)
+        wandb.log_artifact(ppo_artifact)
 
-if __name__ == "__main__":
+        if embedding_trainer is not None:
+            assert config.embedder_train_config is not None
+
+            emb_artifact = wandb.Artifact(name=f"emb-model-{wandb.run.id}", type="model")
+            emb_artifact.add_dir(config.embedder_train_config.checkpoint_dir)
+            wandb.log_artifact(emb_artifact)
+
+
+def custom_run(upload: bool = False):
     typ = "gat"
     dataset_path = "./data/ComPile-4.0GB"
 
@@ -202,23 +214,99 @@ if __name__ == "__main__":
         total_timesteps=333_000,
     )
 
-    if len(sys.argv) > 1:
-        run_id = str(sys.argv[1])
-        logger.info(f"Run id: {run_id}")
-        assert ENABLE_WANDB, "WandB must be enabled to use run ids."
-
-        config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
-        if config.embedder_train_config is not None:
-            config.embedder_train_config.checkpoint_dir = os.path.abspath(
-                f"./models/embedding/{typ}/{run_id}"
-            )
-    else:
-        run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        logger.info(f"No run id provided. Using timestamp: {run_id}")
+    run_id = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    )
+    
+    config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
+    if config.embedder_train_config is not None:
+        config.embedder_train_config.checkpoint_dir = os.path.abspath(f"./models/embedding/{typ}/{run_id}")
 
     if ENABLE_WANDB:
-        wandb.init(
-            project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
-        )
+        wandb.init(project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config))
 
-    run_training(config)
+    run_training(config, upload_artifact=upload)
+
+
+def sweep_run(upload: bool = False):
+    dataset_path = "./data/ComPile-4.0GB"
+    
+    run = wandb.init(project="rl", resume="allow")
+    sweep_config = wandb.config
+    
+    run_name = sweep_config.get("run_name", run.id)
+    run.name = run_name
+
+    use_embedder = sweep_config.get("use_embedder", False)
+    typ = sweep_config.get("embedding_type", "gat")
+
+    if use_embedder:
+        embedding_config = EmbeddingConfig(
+            dataset_path=dataset_path,
+            embedding_type=typ,
+            checkpoint_dir=os.path.abspath(f"./models/embedding/{typ}/{run_name}"),
+        )
+    else:
+        embedding_config = None
+
+    config = PPOConfig(
+        dataset_path=dataset_path,
+        embedder_train_config=embedding_config,
+        checkpoint_dir=os.path.abspath(f"./models/ppo/{run_name}"),
+    )
+
+    for key, value in sweep_config.items():
+        if key.startswith("emb_") and embedding_config is not None:
+            attr_name = key[4:]
+            if hasattr(embedding_config, attr_name):
+                setattr(embedding_config, attr_name, value)
+        elif hasattr(config, key):
+            setattr(config, key, value)
+
+    wandb.config.update(asdict(config), allow_val_change=True)
+
+    run_training(config, upload_artifact=upload)
+
+def config_run(config_path: str, run_id: str | None = None, upload: bool = False):
+    config = PPOConfig.load(config_path)
+
+    if run_id is None:
+        run_id = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        logger.info(f"No run id provided. Using timestamp: {run_id}")
+    else:
+        logger.info(f"Run id provided: {run_id}")
+
+    config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
+    if config.embedder_train_config is not None:
+        typ = config.embedder_train_config.embedding_type
+        config.embedder_train_config.checkpoint_dir = os.path.abspath(f"./models/embedding/{typ}/{run_id}")
+
+    if ENABLE_WANDB:
+        wandb.init(project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config))
+
+    run_training(config, upload_artifact=upload)
+
+if __name__ == "__main__":
+    upload = "--upload" in sys.argv
+
+    if "--sweep" in sys.argv:
+        sweep_run(upload=upload)
+    elif "--config" in sys.argv:
+        config_idx = sys.argv.index("--config")
+        
+        if config_idx + 1 < len(sys.argv):
+            path: str = sys.argv[config_idx + 1]
+            
+            opt_run_id = None
+            for i, arg in enumerate(sys.argv):
+                if i == 0 or i == config_idx or i == config_idx + 1 or arg.startswith("--"):
+                    continue
+
+                opt_run_id = arg
+                break
+                    
+            config_run(path, run_id=opt_run_id, upload=upload)
+    else:
+        custom_run(upload=upload)
