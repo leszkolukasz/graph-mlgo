@@ -1,107 +1,415 @@
 import os
+from typing import Literal
+
 import numpy as np
 import plotly.graph_objects as go
-from pathlib import Path
+from loguru import logger
+from plotly.subplots import make_subplots
 
-def plot_benchmark_results(checkpoint_dirs: list[str]):
-    """
-    Wczytuje zyski agenta i LLVM z wielu checkpointów i generuje interaktywny Violin Plot.
-    """
+NBINS = 1000
+
+
+def plot_benchmark_for_metric(
+    checkpoint_dirs: list[tuple[str, str]],
+    *,
+    value_type: str,
+    plot_name: str,
+    yaxis_name: str,
+    diff: Literal["llvm_minus_agent", "agent_minus_llvm"] | None = None,
+    y_limit: tuple[float, float] | None = None,
+    bin_width: float | None = None,
+):
+    logger.info(f"Plotting {plot_name}...")
+
     fig = go.Figure()
-    
-    # 1. Najpierw dodajemy baseline LLVM
-    # Zakładamy, że LLVM zachowuje się tak samo we wszystkich testach, 
-    # więc bierzemy plik llvm_gains.npy z pierwszego podanego katalogu
-    if not checkpoint_dirs:
-        print("Brak katalogów do przetworzenia.")
-        return
-        
-    first_dir = checkpoint_dirs[0]
-    llvm_path = os.path.join(first_dir, "llvm_gains.npy")
-    
-    if os.path.exists(llvm_path):
-        llvm_gains = np.load(llvm_path)
-        
-        # Obliczamy metryki dla lepszego opisu na wykresie
-        llvm_mean = np.mean(llvm_gains)
-        llvm_median = np.median(llvm_gains)
-        
-        fig.add_trace(go.Violin(
-            y=llvm_gains,
-            name="<b>Baseline: LLVM (Oz)</b>", # Pogrubione dla wyróźnienia
-            box_visible=True, # Pokazuje wewnątrz klasyczny box-plot
-            meanline_visible=True, # Rysuje linię średniej
-            fillcolor='rgba(128, 128, 128, 0.5)', # Szary dla baseline'u
-            line_color='gray',
-            hovertext=f"Średnia: {llvm_mean:.1f}<br>Mediana: {llvm_median:.1f}",
-            points="outliers", # Pokazuje tylko punkty odstające, by nie zamulić przeglądarki
-            jitter=0.05
-        ))
-    else:
-        print(f"OSTRZEŻENIE: Nie znaleziono pliku {llvm_path}")
 
-    # 2. Pętla po wszystkich podanych modelach (Agentach)
-    colors = ['rgba(31, 119, 180, 0.6)', 'rgba(255, 127, 14, 0.6)', 
-              'rgba(44, 160, 44, 0.6)', 'rgba(214, 39, 40, 0.6)', 
-              'rgba(148, 103, 189, 0.6)']
+    first_dir = checkpoint_dirs[0][0]
+    llvm_path = os.path.join(first_dir, f"llvm_{value_type}.npy")
 
-    for i, ckpt_dir in enumerate(checkpoint_dirs):
-        agent_path = os.path.join(ckpt_dir, "agent_gains.npy")
-        
-        if not os.path.exists(agent_path):
-            print(f"Pomijanie {ckpt_dir} - brak pliku agent_gains.npy")
-            continue
-            
-        agent_gains = np.load(agent_path)
-        
-        # Pobieramy nazwę folderu końcowego jako nazwę modelu do legendy
-        model_name = Path(ckpt_dir).name
-        
-        agent_mean = np.mean(agent_gains)
-        agent_median = np.median(agent_gains)
-        
-        # Wybieramy kolor z palety (lub zapętlamy)
-        color = colors[i % len(colors)]
-        
-        fig.add_trace(go.Violin(
-            y=agent_gains,
-            name=f"Agent: {model_name}",
-            box_visible=True,
-            meanline_visible=True,
-            fillcolor=color,
-            line_color=color.replace('0.6', '1.0'), # Mniej przezroczyste obramowanie
-            hovertext=f"Średnia: {agent_mean:.1f}<br>Mediana: {agent_median:.1f}",
-            points="outliers",
-            jitter=0.05
-        ))
+    llvm_values = np.load(llvm_path)
 
-    # 3. Kształtowanie layoutu
-    fig.update_layout(
-        title="<b>Porównanie skuteczności inlinowania: RL Agent vs LLVM Oz</b><br><sup>Rozkład zaoszczędzonych bajtów względem kodu bez inlinowania (Więcej = Lepiej)</sup>",
-        yaxis_title="Zaoszczędzone bajty (Gain)",
-        xaxis_title="Ewaluowany Model",
-        violingap=0.2,
-        violingroupgap=0.1,
-        violinmode='group',
-        template='plotly_white',
-        font=dict(size=14),
-        hovermode="closest",
-        # Rysuje poziomą linię na wysokości Y=0 dla ułatwienia odczytu (granica "puchnięcia" kodu)
-        shapes=[dict(
-            type='line',
-            y0=0, y1=0,
-            x0=-0.5, x1=len(checkpoint_dirs) + 0.5,
-            line=dict(color='Red', width=2, dash='dash')
-        )]
+    num_rows = len(checkpoint_dirs) if diff is not None else len(checkpoint_dirs) + 1
+
+    fig = make_subplots(
+        rows=num_rows,
+        cols=1,
+        shared_xaxes=False,
+        vertical_spacing=0.02,
     )
 
-    fig.show()
+    min_5_quartile = float("inf")
+    max_95_quartile = float("-inf")
+    current_row = 1
+
+    hist_kwargs = (
+        dict(xbins=dict(size=bin_width))
+        if bin_width is not None
+        else dict(nbinsx=NBINS)
+    )
+
+    if diff is None:
+        llvm_mean = np.mean(llvm_values)
+        llvm_median = np.median(llvm_values)
+
+        for i in range(1, len(checkpoint_dirs)):
+            llvm_path_other = os.path.join(
+                checkpoint_dirs[i][0], f"llvm_{value_type}.npy"
+            )
+            llvm_values_other = np.load(llvm_path_other)
+
+            assert np.array_equal(llvm_values, llvm_values_other)
+
+        min_5_quartile = min(min_5_quartile, np.percentile(llvm_values, 5))
+        max_95_quartile = max(max_95_quartile, np.percentile(llvm_values, 95))
+        q1, q2, q3 = np.percentile(llvm_values, [25, 50, 75])
+        success_rate = np.mean(llvm_values >= 0) * 100
+
+        logger.info(
+            f"Baseline LLVM (Oz), Mean: {llvm_mean:.2f}, Median: {llvm_median:.2f}, Q1: {q1:.2f}, Q3: {q3:.2f}, Success Rate: {success_rate:.2f}%"
+        )
+
+        fig.add_trace(
+            go.Histogram(
+                x=llvm_values,
+                name="LLVM (Oz)",
+                marker_color="rgba(128, 128, 128, 0.7)",
+                showlegend=False,
+                histnorm="probability",
+                **hist_kwargs,
+            ),
+            row=current_row,
+            col=1,
+        )
+
+        fig.add_vline(
+            x=q2,
+            line_width=2,
+            line_dash="solid",
+            line_color="black",
+            row=current_row,
+            col=1,
+        )
+        fig.add_vline(
+            x=q1,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(0, 0, 0, 0.6)",
+            row=current_row,
+            col=1,
+        )
+        fig.add_vline(
+            x=q3,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(0, 0, 0, 0.6)",
+            row=current_row,
+            col=1,
+        )
+
+        fig.update_yaxes(title_text="LLVM (Oz)", row=current_row, col=1)
+        current_row += 1
+
+    colors = [
+        "rgba(31, 119, 180, 0.6)",
+        "rgba(255, 127, 14, 0.6)",
+        "rgba(44, 160, 44, 0.6)",
+        "rgba(214, 39, 40, 0.6)",
+        "rgba(148, 103, 189, 0.6)",
+    ]
+
+    for i, (ckpt_dir, model_name) in enumerate(checkpoint_dirs):
+        agent_path = os.path.join(ckpt_dir, f"agent_{value_type}.npy")
+        agent_values = np.load(agent_path)
+
+        if diff == "llvm_minus_agent":
+            agent_values = llvm_values - agent_values
+        elif diff == "agent_minus_llvm":
+            agent_values = agent_values - llvm_values
+
+        # if model_name == "PPO sparse reward Best":
+        #     print(agent_values)
+
+        agent_mean = np.mean(agent_values)
+        agent_median = np.median(agent_values)
+
+        color = colors[i % len(colors)]
+
+        min_5_quartile = min(min_5_quartile, np.percentile(agent_values, 5))
+        max_95_quartile = max(max_95_quartile, np.percentile(agent_values, 95))
+        q1, q2, q3 = np.percentile(agent_values, [25, 50, 75])
+        success_rate = np.mean(agent_values >= 0) * 100
+        succes_rate_no_draw = np.sum(agent_values > 0) / np.sum(agent_values != 0) * 100
+        zeros_rate = np.mean(agent_values == 0) * 100
+
+        logger.info(
+            f"Model: {model_name}, Mean: {agent_mean:.2f}, Median: {agent_median:.2f}, Q1: {q1:.2f}, Q3: {q3:.2f}, Success Rate: {success_rate:.2f}%, Success Rate (no draw): {succes_rate_no_draw:.2f}%, Draw Rate: {zeros_rate:.2f}%"
+        )
+
+        fig.add_trace(
+            go.Histogram(
+                x=agent_values,
+                name=model_name,
+                marker_color=color,
+                histnorm="probability",
+                showlegend=False,
+                **hist_kwargs,
+            ),
+            row=current_row,
+            col=1,
+        )
+
+        fig.add_vline(
+            x=q2,
+            line_width=2,
+            line_dash="solid",
+            line_color="black",
+            row=current_row,
+            col=1,
+        )
+        fig.add_vline(
+            x=q1,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(0, 0, 0, 0.6)",
+            row=current_row,
+            col=1,
+        )
+        fig.add_vline(
+            x=q3,
+            line_width=1,
+            line_dash="dash",
+            line_color="rgba(0, 0, 0, 0.6)",
+            row=current_row,
+            col=1,
+        )
+
+        fig.update_yaxes(
+            title_text=model_name.replace("PPO ", ""), row=current_row, col=1
+        )
+        current_row += 1
+
+    dynamic_height = 130 * num_rows
+
+    fig.update_layout(
+        title=plot_name,
+        template="plotly_white",
+        font=dict(size=8),
+        margin=dict(l=150, r=40, t=60, b=60),
+        height=dynamic_height,
+        width=1000,
+    )
+
+    fig.update_xaxes(
+        range=[min_5_quartile, max_95_quartile] if y_limit is None else y_limit
+    )
+    fig.update_xaxes(title_text=yaxis_name, row=num_rows, col=1)
+
+    fig.write_image(
+        f"plots/{plot_name.replace(' ', '_')}.png", width=600, height=1200, scale=2
+    )
+
+
+def calc_perc_gain_opt(checkpoint_dirs: list[tuple[str, str]]):
+    logger.info("Calculating percentage gain for optimized runs...")
+
+    first_dir = checkpoint_dirs[0][0]
+
+    llvm_gains_opt = np.load(os.path.join(first_dir, "llvm_gains_opt.npy"))
+    size_baseline_opts = np.load("models_final/size_baseline_opts.npy")
+
+    # llvm_perc_gains_opt = (llvm_gains_opt / size_baseline_opts) * 100
+    llvm_perc_gains_opt = np.where(
+        size_baseline_opts == 0, 0, (llvm_gains_opt / size_baseline_opts) * 100
+    )
+
+    q1, q2, q3 = np.percentile(llvm_perc_gains_opt, [25, 50, 75])
+    success_rate = np.mean(llvm_perc_gains_opt >= 0) * 100
+    no_inlining = np.mean(size_baseline_opts == 0) * 100
+
+    logger.info(
+        f"Baseline LLVM (Oz) Percentage Gain (Opt), Mean: {np.mean(llvm_perc_gains_opt):.2f}%, Median: {np.median(llvm_perc_gains_opt):.2f}%, Q1: {q1:.2f}%, Q3: {q3:.2f}%, Success Rate: {success_rate:.2f}%, No Inlining: {no_inlining:.2f}%"
+    )
+
+    for ckpt_dir, model_name in checkpoint_dirs:
+        agent_gains_opt = np.load(os.path.join(ckpt_dir, "agent_gains_opt.npy"))
+        agent_perc_gains_opt = np.where(
+            size_baseline_opts == 0, 0, (agent_gains_opt / size_baseline_opts) * 100
+        )
+
+        q1, q2, q3 = np.percentile(agent_perc_gains_opt, [25, 50, 75])
+        success_rate = np.mean(agent_perc_gains_opt >= 0) * 100
+        succes_rate_no_draw = (
+            np.sum(agent_perc_gains_opt > 0) / np.sum(agent_perc_gains_opt != 0) * 100
+        )
+        zeros_rate = np.mean(agent_perc_gains_opt == 0) * 100
+
+        logger.info(
+            f"Model: {model_name}, Percentage Gain (Opt), Mean: {np.mean(agent_perc_gains_opt):.2f}%, Median: {np.median(agent_perc_gains_opt):.2f}%, Q1: {q1:.2f}%, Q3: {q3:.2f}%, Success Rate: {success_rate:.2f}%, Success Rate (no draw): {succes_rate_no_draw:.2f}%, Draw Rate: {zeros_rate:.2f}%"
+        )
+
+    for ckpt_dir, model_name in checkpoint_dirs:
+        agent_gains_opt = np.load(os.path.join(ckpt_dir, "agent_gains_opt.npy"))
+        agent_perc_gains_opt = np.where(
+            size_baseline_opts == 0, 0, (agent_gains_opt / size_baseline_opts) * 100
+        )
+
+        agent_minus_llvm_perc_gain = agent_perc_gains_opt - llvm_perc_gains_opt
+
+        q1, q2, q3 = np.percentile(agent_minus_llvm_perc_gain, [25, 50, 75])
+        success_rate = np.mean(agent_minus_llvm_perc_gain >= 0) * 100
+        succes_rate_no_draw = (
+            np.sum(agent_minus_llvm_perc_gain > 0)
+            / np.sum(agent_minus_llvm_perc_gain != 0)
+            * 100
+        )
+        zeros_rate = np.mean(agent_minus_llvm_perc_gain == 0) * 100
+
+        logger.info(
+            f"Model: {model_name}, Percentage Gain vs LLVM (Opt), Mean: {np.mean(agent_minus_llvm_perc_gain):.2f}%, Median: {np.median(agent_minus_llvm_perc_gain):.2f}%, Q1: {q1:.2f}%, Q3: {q3:.2f}%, Success Rate: {success_rate:.2f}%, Success Rate (no draw): {succes_rate_no_draw:.2f}%, Draw Rate: {zeros_rate:.2f}%"
+        )
+
+
+def plot_benchmark_results(checkpoint_dirs: list[tuple[str, str]]):
+    # plot_benchmark_for_metric(
+    #     checkpoint_dirs,
+    #     value_type="gains_no_opt",
+    #     plot_name="Size reduction",
+    #     yaxis_name="Size reduction (bytes)",
+    #     y_limit=(-300, 3000),
+    # )
+
+    # plot_benchmark_for_metric(
+    #     checkpoint_dirs,
+    #     value_type="gains_no_opt",
+    #     plot_name="Size reduction (vs LLVM)",
+    #     yaxis_name="Size reduction (bytes)",
+    #     diff="agent_minus_llvm",
+    #     y_limit=(-300, 300),
+    #     bin_width=10,
+    # )
+
+    # plot_benchmark_for_metric(
+    #     checkpoint_dirs,
+    #     value_type="gains_opt",
+    #     plot_name="Size reduction (excluding other passes)",
+    #     yaxis_name="Size reduction (bytes)",
+    #     y_limit=(-200, 200),
+    # )
+
+    # plot_benchmark_for_metric(
+    #     checkpoint_dirs,
+    #     value_type="gains_opt",
+    #     plot_name="Size reduction (excluding other passes, vs LLVM)",
+    #     yaxis_name="Size reduction (bytes)",
+    #     diff="agent_minus_llvm",
+    #     y_limit=(-200, 200),
+    # )
+
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="perc_gains",
+        plot_name="Percentage size reduction",
+        yaxis_name="Percentage size reduction (%)",
+    )
+
+    # plot_benchmark_for_metric(
+    #     checkpoint_dirs,
+    #     value_type="perc_gains",
+    #     plot_name="Percentage size reduction (vs LLVM)",
+    #     yaxis_name="Percentage size reduction (%)",
+    #     diff="agent_minus_llvm",
+    # )
+
+    calc_perc_gain_opt(checkpoint_dirs)
 
 
 if __name__ == "__main__":
+    # checkpoints_to_compare = [
+    #     ("./models_final/ppo/paper_ppo_128_3", "PPO hidden=128"),
+    #     ("./models_final/ppo/paper_ppo_128_best", "PPO hidden=128 Best"),
+    #     ("./models_final/ppo/paper_ppo_256_3", "PPO hidden=256"),
+    #     ("./models_final/ppo/paper_ppo_256_best", "PPO hidden=256 Best"),
+    #     ("./models_final/ppo/paper_ppo_1024_3", "PPO hidden=1024"),
+    #     ("./models_final/ppo/paper_ppo_1024_best", "PPO hidden=1024 Best"),
+    #     ("./models_final/ppo/paper_ppo_sparse_3", "PPO Sparse Reward"),
+    #     ("./models_final/ppo/paper_ppo_sparse_3_best", "PPO Sparse Reward Best"),
+    # ]
+
+    # checkpoints_to_compare = [
+    #     ("./models_final/ppo/paper_ppo_gat_3", "PPO + GAT"),
+    #     ("./models_final/ppo/paper_ppo_gat_contr", "PPO + GAT Contrastive"),
+    #     ("./models_final/ppo/paper_ppo_gat_contr_best", "PPO + GAT Contrastive Best"),
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain", "PPO + GAT Pretrained"),
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain_best", "PPO + GAT Pretrained Best"),
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain_noretain", "PPO + GAT Pretrained, no Retain"),
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain_noretain_best", "PPO + GAT Pretrained, no Retain Best"),
+    #     ("./models_final/ppo/paper_ppo_gat_sparse_3", "PPO + GAT Sparse Reward"),
+    #     ("./models_final/ppo/paper_ppo_gat_sparse_3_best", "PPO + GAT Sparse Reward Best"),
+    # ]
+
+    # checkpoints_to_compare = [
+    #     ("./models_final/ppo/paper_ppo_sage_3", "PPO + GraphSAGE"),
+    #     ("./models_final/ppo/paper_ppo_sage_3_best", "PPO + GraphSAGE Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_contr", "PPO + GraphSAGE Contrastive"),
+    #     ("./models_final/ppo/paper_ppo_sage_contr_best", "PPO + GraphSAGE Contrastive Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_pretrain", "PPO + GraphSAGE Pretrained"),
+    #     ("./models_final/ppo/paper_ppo_sage_pretrain_best", "PPO + GraphSAGE Pretrained Best"),
+    #     # ("./models_final/ppo/paper_ppo_sage_pretrain_noretain", "PPO + GraphSAGE Pretrained, no Retain"),
+    #     # ("./models_final/ppo/paper_ppo_sage_pretrain_noretain_best", "PPO + GraphSAGE Pretrained, no Retain Best"),
+    #     # ("./models_final/ppo/paper_ppo_sage_sparse_4", "PPO + GraphSAGE Sparse Reward"),
+    #     # ("./models_final/ppo/paper_ppo_sage_sparse_4_best", "PPO + GraphSAGE Sparse Reward Best"),
+    # ]
+
+    # checkpoints_to_compare = [
+    #     ("./models_final/ppo/paper_ppo_gat_3", "PPO + GAT"),
+    #     ("./models_final/ppo/paper_ppo_gat_sparse_3_best", "PPO + GAT Sparse Reward Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_3_best", "PPO + GraphSAGE Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_sparse_4_best", "PPO + GraphSAGE Sparse Reward Best"),
+    # ]
+
+    # checkpoints_to_compare = [
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain_noretain_best", "PPO + GAT Pretrained, no Retain Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_pretrain_noretain_best", "PPO + GraphSAGE Pretrained, no Retain Best"),
+
+    #     # ("./models_final/ppo/paper_ppo_gat_contr_best", "PPO + GAT Contrastive Best"),
+    #     ("./models_final/ppo/paper_ppo_gat_pretrain_best", "PPO + GAT Pretrained Best"),
+    #     # ("./models_final/ppo/paper_ppo_sage_contr_best", "PPO + GraphSAGE Contrastive Best"),
+    #     ("./models_final/ppo/paper_ppo_sage_pretrain_best", "PPO + GraphSAGE Pretrained Best"),
+    # ]
+
     checkpoints_to_compare = [
-        "./models/ppo/final_ppo_sparse",
-        "./models/ppo/final_ppo_256",
+        ("./models_final/ppo/paper_ppo_128_best", "PPO hidden=128 Best"),
+        ("./models_final/ppo/paper_ppo_256_best", "PPO hidden=256 Best"),
+        ("./models_final/ppo/paper_ppo_1024_best", "PPO hidden=1024 Best"),
+        ("./models_final/ppo/paper_ppo_sparse_3_best", "PPO Sparse Reward Best"),
+        ("./models_final/ppo/paper_ppo_gat_3", "PPO + GAT"),
+        (
+            "./models_final/ppo/paper_ppo_gat_sparse_3_best",
+            "PPO + GAT Sparse Reward Best",
+        ),
+        ("./models_final/ppo/paper_ppo_gat_contr_best", "PPO + GAT Contrastive Best"),
+        ("./models_final/ppo/paper_ppo_gat_pretrain_best", "PPO + GAT Pretrained Best"),
+        (
+            "./models_final/ppo/paper_ppo_gat_pretrain_noretain_best",
+            "PPO + GAT Pretrained, no Retain Best",
+        ),
+        ("./models_final/ppo/paper_ppo_sage_3_best", "PPO + GraphSAGE Best"),
+        (
+            "./models_final/ppo/paper_ppo_sage_sparse_4_best",
+            "PPO + GraphSAGE Sparse Reward Best",
+        ),
+        (
+            "./models_final/ppo/paper_ppo_sage_contr_best",
+            "PPO + GraphSAGE Contrastive Best",
+        ),
+        (
+            "./models_final/ppo/paper_ppo_sage_pretrain_best",
+            "PPO + GraphSAGE Pretrained Best",
+        ),
+        (
+            "./models_final/ppo/paper_ppo_sage_pretrain_noretain_best",
+            "PPO + GraphSAGE Pretrained, no Retain Best",
+        ),
     ]
-    
+
     plot_benchmark_results(checkpoints_to_compare)

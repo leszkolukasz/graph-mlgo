@@ -12,6 +12,7 @@ dependencies:
   - scikit-build-core
   - pybind11
   - huggingface_hub
+  - python-kaleido
   
   - llvmdev
   - llvmlite

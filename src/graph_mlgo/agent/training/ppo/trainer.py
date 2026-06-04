@@ -466,6 +466,40 @@ class PPOTrainer:
                 length=cfg.update_epochs,
             )
 
+            old_ppo_params = ppo_state.train_state.params  # ty: ignore
+            new_ppo_params = ppo_ts.params
+
+            ppo_diff_sq = jax.tree_util.tree_map(
+                lambda x, y: jnp.sum((x - y) ** 2), old_ppo_params, new_ppo_params
+            )
+            ppo_param_change = jnp.sqrt(
+                jnp.sum(jnp.array(jax.tree_util.tree_leaves(ppo_diff_sq)))
+            )
+
+            ppo_val_sq = jax.tree_util.tree_map(lambda x: jnp.sum(x**2), new_ppo_params)
+            ppo_param_norm = jnp.sqrt(
+                jnp.sum(jnp.array(jax.tree_util.tree_leaves(ppo_val_sq)))
+            )
+
+            if emb_state is not None:
+                old_emb_params = emb_state.train_state.params
+                new_emb_params = emb_ts.params
+
+                diff_sq = jax.tree_util.tree_map(
+                    lambda x, y: jnp.sum((x - y) ** 2), old_emb_params, new_emb_params
+                )
+                emb_param_change = jnp.sqrt(
+                    jnp.sum(jnp.array(jax.tree_util.tree_leaves(diff_sq)))
+                )
+
+                val_sq = jax.tree_util.tree_map(lambda x: jnp.sum(x**2), new_emb_params)
+                emb_param_norm = jnp.sqrt(
+                    jnp.sum(jnp.array(jax.tree_util.tree_leaves(val_sq)))
+                )
+            else:
+                emb_param_change = jnp.array(0.0, dtype=jnp.float32)
+                emb_param_norm = jnp.array(0.0, dtype=jnp.float32)
+
             completed_mask = rollout_info.completed
             completed_returns = rollout_info.completed_return
             completed_lengths = rollout_info.completed_length
@@ -493,6 +527,10 @@ class PPOTrainer:
                 "value_loss": jnp.mean(value_losses),
                 "entropy": jnp.mean(entropies),
                 "is_finite": is_finite.astype(jnp.float32),
+                "emb_param_change": emb_param_change,
+                "emb_param_norm": emb_param_norm,
+                "ppo_param_change": ppo_param_change,
+                "ppo_param_norm": ppo_param_norm,
             }
 
             next_runner_state = PPORunnerState(

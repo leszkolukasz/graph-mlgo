@@ -132,6 +132,10 @@ def run_training(config: PPOConfig, upload_artifact: bool = False):
             "train/value_loss": float(metrics["value_loss"]),
             "train/entropy": float(metrics["entropy"]),
             "train/is_finite": float(metrics["is_finite"]),
+            "train/emb_param_change": float(metrics["emb_param_change"]),
+            "train/emb_param_norm": float(metrics["emb_param_norm"]),
+            "train/ppo_param_change": float(metrics["ppo_param_change"]),
+            "train/ppo_param_norm": float(metrics["ppo_param_norm"]),
             "env_step": update_idx * config.batch_size,
         }
 
@@ -182,7 +186,7 @@ def run_training(config: PPOConfig, upload_artifact: bool = False):
     if ENABLE_WANDB and upload_artifact:
         logger.info("Uploading artifacts to W&B...")
         assert wandb.run is not None
-        
+
         ppo_artifact = wandb.Artifact(name=f"ppo-model-{wandb.run.id}", type="model")
         ppo_artifact.add_dir(config.checkpoint_dir)
         wandb.log_artifact(ppo_artifact)
@@ -190,7 +194,9 @@ def run_training(config: PPOConfig, upload_artifact: bool = False):
         if embedding_trainer is not None:
             assert config.embedder_train_config is not None
 
-            emb_artifact = wandb.Artifact(name=f"emb-model-{wandb.run.id}", type="model")
+            emb_artifact = wandb.Artifact(
+                name=f"emb-model-{wandb.run.id}", type="model"
+            )
             emb_artifact.add_dir(config.embedder_train_config.checkpoint_dir)
             wandb.log_artifact(emb_artifact)
 
@@ -219,23 +225,27 @@ def custom_run(upload: bool = False):
         if len(sys.argv) > 1
         else datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     )
-    
+
     config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
     if config.embedder_train_config is not None:
-        config.embedder_train_config.checkpoint_dir = os.path.abspath(f"./models/embedding/{typ}/{run_id}")
+        config.embedder_train_config.checkpoint_dir = os.path.abspath(
+            f"./models/embedding/{typ}/{run_id}"
+        )
 
     if ENABLE_WANDB:
-        wandb.init(project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config))
+        wandb.init(
+            project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
+        )
 
     run_training(config, upload_artifact=upload)
 
 
 def sweep_run(upload: bool = False):
     dataset_path = "./data/ComPile-4.0GB"
-    
+
     run = wandb.init(project="rl", resume="allow")
     sweep_config = wandb.config
-    
+
     run_name = sweep_config.get("run_name", run.id)
     run.name = run_name
 
@@ -269,6 +279,7 @@ def sweep_run(upload: bool = False):
 
     run_training(config, upload_artifact=upload)
 
+
 def config_run(config_path: str, run_id: str | None = None, upload: bool = False):
     config = PPOConfig.load(config_path)
 
@@ -281,12 +292,17 @@ def config_run(config_path: str, run_id: str | None = None, upload: bool = False
     config.checkpoint_dir = os.path.abspath(f"./models/ppo/{run_id}")
     if config.embedder_train_config is not None:
         typ = config.embedder_train_config.embedding_type
-        config.embedder_train_config.checkpoint_dir = os.path.abspath(f"./models/embedding/{typ}/{run_id}")
+        config.embedder_train_config.checkpoint_dir = os.path.abspath(
+            f"./models/embedding/{typ}/{run_id}"
+        )
 
     if ENABLE_WANDB:
-        wandb.init(project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config))
+        wandb.init(
+            project="rl", name=run_id, id=run_id, resume="allow", config=asdict(config)
+        )
 
     run_training(config, upload_artifact=upload)
+
 
 if __name__ == "__main__":
     upload = "--upload" in sys.argv
@@ -295,18 +311,23 @@ if __name__ == "__main__":
         sweep_run(upload=upload)
     elif "--config" in sys.argv:
         config_idx = sys.argv.index("--config")
-        
+
         if config_idx + 1 < len(sys.argv):
             path: str = sys.argv[config_idx + 1]
-            
+
             opt_run_id = None
             for i, arg in enumerate(sys.argv):
-                if i == 0 or i == config_idx or i == config_idx + 1 or arg.startswith("--"):
+                if (
+                    i == 0
+                    or i == config_idx
+                    or i == config_idx + 1
+                    or arg.startswith("--")
+                ):
                     continue
 
                 opt_run_id = arg
                 break
-                    
+
             config_run(path, run_id=opt_run_id, upload=upload)
     else:
         custom_run(upload=upload)

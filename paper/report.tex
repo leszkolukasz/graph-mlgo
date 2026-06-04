@@ -1,0 +1,521 @@
+%%%%%%%% ICML 2025 EXAMPLE LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{booktabs} % for professional tables
+
+% hyperref makes hyperlinks in the resulting PDF.
+% If your build breaks (sometimes temporarily if a hyperlink spans a page)
+% please comment out the following usepackage line and replace
+% \usepackage{icml2025} with \usepackage[nohyperref]{icml2025} above.
+\usepackage{hyperref}
+
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+% \usepackage{icml2025}
+
+% If accepted, instead use the following line for the camera-ready submission:
+\usepackage[accepted]{icml2025}
+
+% For theorems and such
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true, % To jest kluczoI! Automatyczne łamanie linii
+  breakatwhitespace=false % Łamie naIt tam, gdzie nie ma spacji
+}
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Todonotes is useful during development; simply uncomment the next line
+%    and comment out the line below the next line to turn off comments
+%\usepackage[disable,textsize=tiny]{todonotes}
+\usepackage[textsize=tiny]{todonotes}
+
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Topology-Aware Reinforcement Learning for Function Inlining}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Topology-Aware Reinforcement Learning for Function Inlining}
+
+% It is OKAY to include author information, even for blind
+% submissions: the style file will automatically remove it for you
+% unless you've provided the [accepted] option to the icml2025
+% package.
+
+% List of affiliations: The first argument should be a (short)
+% identifier you will use later to specify author affiliations
+% Academic affiliations should list Department, University, City, Region, Country
+% Industry affiliations should list Company, City, Region, Country
+
+% You can specify symbols, otherwise they are numbered in order.
+% Ideally, you should not use this facility. Affiliations will be numbered
+% in order of appearance and this is the preferred way.
+\icmlsetsymbol{equal}{*}
+
+\begin{icmlauthorlist}
+\icmlauthor{Łukasz Leszko (438580)}{}
+% \icmlauthor{Firstname2 Lastname2}{equal,yyy,comp}
+% \icmlauthor{Firstname3 Lastname3}{comp}
+% \icmlauthor{Firstname4 Lastname4}{sch}
+% \icmlauthor{Firstname5 Lastname5}{yyy}
+% \icmlauthor{Firstname6 Lastname6}{sch,yyy,comp}
+% \icmlauthor{Firstname7 Lastname7}{comp}
+%\icmlauthor{}{sch}
+% \icmlauthor{Firstname8 Lastname8}{sch}
+% \icmlauthor{Firstname8 Lastname8}{yyy,comp}
+%\icmlauthor{}{sch}
+%\icmlauthor{}{sch}
+\end{icmlauthorlist}
+
+% \icmlaffiliation{yyy}{MIM, University of Warsaw, Poland}
+% \icmlaffiliation{comp}{Company Name, Location, Country}
+% \icmlaffiliation{sch}{School of ZZZ, Institute of WWW, Location, Country}
+
+% \icmlcorrespondingauthor{Łukasz Leszko}{ll438580@students.mimuw.edu.pl}
+% \icmlcorrespondingauthor{Firstname2 Lastname2}{first2.last2@www.uk}
+
+% You may provide any keywords that you
+% find helpful for describing your paper; these are used to populate
+% the "keywords" metadata in the PDF but will not be shown in the document
+\icmlkeywords{Machine Learning, ICML}
+
+\vskip 0.3in
+]
+
+% this must go after the closing bracket ] following \twocolumn[ ...
+
+% This command actually creates the footnote in the first column
+% listing the affiliations and the copyright notice.
+% The command takes one argument, which is text to display at the start of the footnote.
+% The \icmlEqualContribution command is standard text for equal contribution.
+% Remove it (just {}) if you do not need this facility.
+
+%\printAffiliationsAndNotice{}  % leave blank if no need to mention equal contribution
+% \printAffiliationsAndNotice{\icmlEqualContribution} % otherwise use the standard text.
+
+\begin{abstract}
+Inlining-for-size is a fundamental compiler optimization technique that aims to reduce code size by replacing function calls with the body of the called function. HoIver, finding the optimal inlining strategy is NP-hard. While manual heuristics are traditionally used, modern approaches formulate the problem as a Markov Decision Process and apply Reinforcement Learning (RL) to learn an inlining policy.
+
+Recent work has demonstrated that RL can outperform these heuristics, yet it relies on simple, low-dimensional representations of the call graph, which limits its potential. In this paper, I propose an extension to the RL formulation that incorporates a richer call graph representation using modern graph embedding techniques (Graph Neural Networks).
+\end{abstract}
+
+\section{Introduction}
+
+Function inlining is a fundamental compiler optimization technique where a function call from a caller to a callee is replaced by the body of the callee function. While this optimization can improve both execution speed and code size, this paper focuses on the latter. By itself, inlining strictly increases code size; hoIver, when combined with other optimizations (e.g., constant folding and dead code elimination), it can lead to a significant reduction in binary size.
+
+Compilers implement inlining by constructing a call graph, where nodes represent functions and directed edges represent function calls. Within this graph, the inlining problem is formulated by determining which edges to inline and in what order. Traditionally, compilers have relied on manually crafted heuristics to make these decisions. LLVM, for example, calculates a cost score for each call site and inlines only those with a score below a certain threshold.
+
+Recently, MLGO \cite{MLGO} proposed a Reinforcement Learning (RL) approach to learn an inlining policy. While they consider both Proximal Policy Optimization (PPO) and evolution strategies, this paper fouces on the former. By iterating over the edges of the call graph, embedding each edge with a simple 11-feature vector, they trained an agent to make a binary decision on whether to inline an edge or not. This approach has shown significant improvements, achieving up to a $5.94\%$ code size reduction over the default LLVM heuristic baseline, and has been successfully upstreamed into the LLVM compiler.
+
+The primary limitation of MLGO is its reliance on a simple, low-dimensional representation of the call graph. Its vector embedding consists of only 11 features: 3 for the caller function, 3 for the callee function, 3 for the call site, and 2 global features (see \cref{tab:inlining-features}). This simplistic representation fails to capture the complex, long-range topological structure of the call graph, which is crucial for the critic network to accurately estimate the value of the current state.
+
+\begin{table}[t]
+
+\vskip 0.15in
+\begin{center}
+\begin{scriptsize}
+\begin{tabular}{ll}
+\toprule
+\textsc{Type} & \textsc{Feature} \\
+\midrule
+\textsc{caller}    & \texttt{caller\_basic\_block\_count} \\
+\textsc{feature}   & \texttt{caller\_conditionally\_executed\_blocks} \\
+                   & \texttt{caller\_users} \\
+\midrule
+\textsc{callee}    & \texttt{callee\_basic\_block\_count} \\
+\textsc{feature}   & \texttt{callee\_conditionally\_executed\_blocks} \\
+                   & \texttt{callee\_users} \\
+\midrule
+\textsc{call site} & \texttt{callsite\_height} \\
+\textsc{feature}   & \texttt{cost\_estimate} \\
+                   & \texttt{number\_constant\_params} \\
+\midrule
+\textsc{call graph}& \texttt{edge\_count} \\
+\textsc{feature}   & \texttt{node\_count} \\
+\bottomrule
+\end{tabular}
+\end{scriptsize}
+\end{center}
+\vskip -0.1in
+
+\caption{11 features used in MLGO}
+\label{tab:inlining-features}
+\end{table}
+
+To address these limitations, this paper makes the following contributions:
+\begin{itemize}
+\item I develop \verb|LLVMInline|, a custom reinforcement learning environment designed specifically for training inlining-for-size agents.
+\item I evaluate and compare two graph embedding techniques: GraphSAGE and Graph Attention Networks (GAT).
+\end{itemize}
+
+\section{Methodology}
+
+This paper builds upon the MLGO framework. I train a PPO agent on LLVM Intermediate Representation (IR) to maximize code size reduction. HoIver, our approach diverges from MLGO in two key aspects. First, I use a richer state representation. Second, I decouple the inlining process from the compiler: our agent applies inlining decisions externally, prior to the standard LLVM optimization passes, whereas MLGO integrates the agent directly into the LLVM source code.
+
+\subsection{Dataset}
+
+To train and evaluate our inlining agent, I utilize ComPile \cite{compile}, a 2 TB dataset of LLVM IR bitcode comprising programs written in languages such as C/C++, Rust, Swift, and Julia. From this dataset, I select a 1.5 GB subset containing approximately 33000 C-language IR modules with an average of $47.46$ inlining opportunities per module.
+
+Because the original dataset was generated across various LLVM releases, I first filter the modules to ensure compatibility with our local LLVM toolchain. Additionally, I discard overly complex modules to maintain training stability, restricting the call graphs to a maximum of 200 nodes, 500 edges, and 15,000 lines of code. Finally, I perform a validation step to ensure that exhaustively inlining all edges within a module completes without any compilation errors or memory exhaustion.
+
+\subsection{Environment}
+
+I implement \verb|LLVMInline|, a custom reinforcement learning environment that conforms to the standard \verb|gymnasium| interface.
+
+For a given LLVM IR module, the creation of the call graph proceeds as follows:
+
+First, the IR module is parsed to extract all functions (nodes) and call sites (edges). Next, the Strongly Connected Components (SCCs) are calculated, and only the edges betIen distinct SCCs are kept. This is done to ensure the acyclicity of the graph and to simplify the graph structure. If there is a recursive self-loop, it is retained but strictly limited to being unrolled only once.
+
+Within this graph, the inlining operation is executed via a Foreign Function Interface (FFI) call to the underlying C++ code. This code uses LLVM libraries to perform the inlining operation and guarantee correctness of the updated module. While this could be achieved through a subprocess call, the FFI approach is significantly faster, as it avoids the overhead of spawning a new process for every single inlining decision.
+
+During the inlining process, edges are visited using post-order traversal. This ensures that callee functions are inlined before their callers, allowing the inlining decisions to propagate upwards through the call graph.
+
+\subsection{PPO}
+
+I can formulate the inlining problem as the following Markov Decision Process (MDP):
+
+\begin{itemize}
+    \item \textbf{State space} $\mathcal{S}$: fixed-size embedding of the current call site, caller node, callee node and optionally surrounding graph structure.
+    \item \textbf{Action space} $\mathcal{A}$: $\mathcal{A} = \{0, 1\}$, where $0$ means "do not inline" and $1$ means "inline".
+    \item \textbf{State transition probability} $\mathcal{P}(s'|s, a)$: deterministic transition of the call graph under the inlining operation.
+    \item \textbf{Reward} $\mathcal{R}(s, a)$: the change in code size after applying the inlining operation.
+\end{itemize}
+
+Defining the reward function requires isolation of the inlining effects. Intuitively, the step reward is formulated as:
+
+\begin{equation}
+    \mathcal{R}(s, a) = \text{Size}(s) - \text{Size}(s')
+\end{equation}
+
+where $\text{Size}(s)$ denotes the byte size of the \verb|.text| section of the object file compiled from state $s$. Specifically, I utilize the LLVM \verb|-Oz| pipeline with all inlining passes explicitly disabled.
+
+\subsection{Embedding}
+
+Graph Neural Networks (GNNs) typically operate in either a transductive or inductive setting. Transductive models, such as the original Graph Convolutional Networks (GCN) \cite{gcn}, assume a fixed graph structure. In contrast,  inductive problem works with dynamic graphs, where the structure can change over time which is the case in our setting. I use inductive architectures, specifically GraphSAGE \cite{sage} and Graph Attention Networks (GAT) \cite{gat}.
+
+These methods operate through $K$ message-passing layers, effectively capturing node's $K$-hop neighborhood.
+
+\subsubsection{GraphSAGE}
+
+GraphSAGE performs an iterative neighborhood aggregation (\cref{alg:graphsage}). At each layer, a node updates its representation by aggregating the feature vectors of its local neighbors and applying a non-linear transformation. While the aggregation function can be implemented using mean, max, or LSTM pooling, I utilize max-pooling, which has been shown to demonstrate good performance \cite{sage}.
+
+\begin{algorithm}[tb]
+   \caption{GraphSAGE}
+   \label{alg:graphsage}
+\begin{algorithmic}
+   \STATE {\bfseries Input:} Graph $\mathcal{G}(\mathcal{V}, \mathcal{E})$; input node features $\{x_v, \forall v \in \mathcal{V}\}$; edge types $\{e_{u,v}, \forall (u,v) \in \mathcal{E}\}$; depth $K$; neighborhood function $\mathcal{N}(v)$
+   \STATE {\bfseries Parameters:} Iight matrices $W^k$, input projection function $\text{InputProj}$, edge type encoder $E_{\text{enc}}$, layer normalizations $\text{LN}_k$, non-linearity $\sigma$, aggregator functions $\text{AGGREGATE}_k$
+   \STATE {\bfseries Output:} Vector representations $z_v$ for all target nodes
+   
+   \STATE $h^0_v \leftarrow \text{InputProj}(x_v), \forall v \in \mathcal{V}$
+   
+   \FOR{$k=1$ {\bfseries to} $K$}
+       \FOR{each target node $v$}
+           \STATE $\tilde{h}^{k-1}_u \leftarrow h^{k-1}_u + E_{\text{enc}}(e_{u,v}), \quad \forall u \in \mathcal{N}(v)$
+           
+           \STATE $h^k_{\mathcal{N}(v)} \leftarrow \text{AGGREGATE}_k(\{\tilde{h}^{k-1}_u, \forall u \in \mathcal{N}(v)\})$
+           
+           \STATE $h^k_v \leftarrow W^k \cdot \text{CONCAT}(h^{k-1}_v, h^k_{\mathcal{N}(v)})$
+           
+           \IF{$k < K$}
+               \STATE $h^k_v \leftarrow \sigma\left(\text{LN}_k(h^k_v)\right)$
+           \ENDIF
+           
+           \STATE $h^k_v \leftarrow h^k_v / \max(||h^k_v||_2, \epsilon)$
+       \ENDFOR
+   \ENDFOR
+   
+   \STATE $z_v \leftarrow h^K_v, \forall v$
+\end{algorithmic}
+
+\vspace{0.1in}
+\footnotesize{\textbf{Note:} Standard GraphSage considers undirected edges. In our case I need to differentiate betIen: self-loops, forward edges (caller $\rightarrow$ callee) and backward edges (callee $\rightarrow$ caller). $E_{\text{enc}}$ represents a trainable embedding matrix for different types of call graph edges.}
+
+\end{algorithm}
+
+In the GraphSAGE algorithm information flows from nodes to their neighbours. There are hoIver, modern alternatives that allow for more flexible information flow, e.g. if both edges and nodes have features, the information may flow first from nodes to edges and then from edges to nodes. The problem of interleaving node and edge updates is an open problem \cite{gn}. This is hoIver, beyond the scope of this paper.
+
+\subsubsection{Graph Attention Networks (GAT)}
+
+GAT is very similar to GraphSAGE, but instead of using a fixed pooling operator, GAT uses a self-attention mechanism \cite{gat}. Similar to our GraphSAGE implementation, I stack $K$ attention layers, enabling each node to attend to its $K$-hop neighborhood, though unlike in text transformers, the positional encoding is replaced with the edge type encoding.
+
+\subsubsection{Call graph embedding}
+
+
+Given the edge to inline $(u, v)$ the embedding is constructed as follows:
+
+
+{\small
+\begin{equation}
+\label{equation:embedding}
+\begin{split}
+    \text{embedding}(u, v) = \text{CONCAT}( & h_G, h_u, h_v, h_{u \rightarrow v} \\
+                                            & N_{\text{emb}}(u), N_{\text{emb}}(v))
+\end{split}
+\end{equation}
+}
+
+where:
+
+\begin{itemize}
+    \item $h_G$ are global features: number of nodes, number of edges, number of unique edges.
+    \item $h_u$ and $h_v$ are the node features as described in Table\,\ref{tab:node-features}.
+    \item $N_{\text{emb}}(u)$ and $N_{\text{emb}}(v)$ are the node embeddings generated by GraphSAGE or GAT.
+    \item $h_{u \rightarrow v}$ are edge features: edge multiplicity, constant parameters ratio.
+\end{itemize}
+
+\begin{table}[t]
+\vskip 0.15in
+\begin{center}
+\begin{scriptsize}
+\begin{tabular}{ll}
+\toprule
+\textsc{Category} & \textsc{Feature} \\
+\midrule
+\textsc{Topological} & \texttt{is\_recursive} \\
+                     & \texttt{in\_degree} \\
+                     & \texttt{in\_degree\_multiplicity} \\
+                     & \texttt{out\_degree} \\
+                     & \texttt{out\_degree\_multiplicity} \\
+                     & \texttt{node\_height} \\
+\midrule
+\textsc{IR Metrics}  & \texttt{num\_instructions} \\
+                     & \texttt{num\_blocks} \\
+                     & \texttt{cond\_blocks\_ratio} \\
+                     & \texttt{simple\_instructions\_ratio} \\
+\bottomrule
+\end{tabular}
+\end{scriptsize}
+\end{center}
+\vskip -0.1in
+
+\caption{Node features in the \texttt{LLVMInline} environment. Includes more features than in the original MLGO.}
+\label{tab:node-features}
+
+\end{table}
+
+\section{Evaluation}
+
+\subsection{Baseline}
+
+The baseline is the default LLVM inlining heuristic.
+
+\subsection{Evaluation metrics}
+
+As I apply the inlining decisions externally, before the standard LLVM optimization passes, good evaluation metric should isolate inlining effects from other optimizations effects. For that reason, I use Optimized-Base Size Reduction (OSR) gain:
+
+\begin{equation}
+\text{Gain}_{\text{OSR}}(s) = \frac{\text{Size}_{\text{Oz-NoInline}}(s) - \text{Size}_{\text{Policy}}(s)}{\text{Size}_{\text{Oz-NoInline}}(s)} \times 100\%
+\end{equation}
+
+where:
+
+\begin{itemize}
+    \item $\text{Size}_{\text{Oz-NoInline}}(s)$ is the size of the .text section of the object file compiled from state $s$ using the LLVM \verb|-Oz| pipeline with all inlining passes explicitly disabled.
+    \item $\text{Size}_{\text{Policy}}(s)$ is the size of the .text section of the object file compiled from state $s$:
+    \begin{itemize}
+        \item after applying the inlining decisions from our policy and then compiling with the same \verb|-Oz| pipeline with inlining passes disabled if the policy is PPO-based, or
+        \item after running the full \verb|-Oz| pipeline with inlining passes enabled if the policy is heuristic-based.
+    \end{itemize} 
+\end{itemize}
+
+For the sake of comparison with MLGO, I also report the Absolute Size Reduction (ASR) gain:
+
+\begin{equation}
+\text{Gain}_{\text{ASR}}(s) = \frac{\text{Size}_{\text{NoOpt}}(s) - \text{Size}_{\text{Policy}}(s)}{\text{Size}_{\text{NoOpt}}(s)} \times 100\%
+\end{equation}
+
+where $\text{Size}_{\text{NoOpt}}(s)$ is the size of the .text section of the object file compiled from state $s$ with \verb|-O0| optimization level.
+\subsection{PPO}
+
+The baseline is a PPO agent where edge embeddings follow the equation \ref{equation:embedding} with node embeddings $N_{\text{emb}}(u)$ and $N_{\text{emb}}(v)$ removed. Agent's configuration is described in \cref{tab:ppo-hyperparameters}. This agent and every subsequent configuration Were trained on a total of 300'000 call sites which is around 6h of training on a single NVIDIA RTX 4060 GPU.
+
+\subsubsection{Hidden layer size}
+
+I evaluated the PPO agent's performance across different hidden layer sizes (128, 256, and 1024) on reward calculated every 5 steps.
+
+While the highest capacity model (1024) showed the fastest initial convergence in the mean return and the lowest early loss, it seems to have become overconfident as evidenced by lowest entropy and increased loss in later stages.
+
+Smallest model (128) did not have enough capacity to learn a good policy resulting in the worst performance across all metrics and configuration (TODO check).
+
+Model with hidden layer size of 256 achieved the best overall performance nearly matching the baseline.
+
+One important observation is that while the models where trained on around 500 different batches, the best validation performance was usually achieved much earlier, with severe degradation in later stages. For that reason, for all comparisions I used model weights from the best validation checkpoint.
+
+\subsubsection{Reward sparsity}
+
+While dense reward is more informative, it requires compiling the module after every inlining decision, which is computationally expensive. For that reason, I compare the performance of the PPO agent trained with hidden size of 256 on sparse and dense rewards. Dense rewards where calculated every 5 steps to reduce the computational overhead.
+
+The sparse reward agent achieved better performance across all metrics and was better by around 0.5 percentage points compared to the baseline.
+
+I believe that dense rewards caused model to focus too much on short-term gains. When inlining a callee into a caller, this may lead to a temporary decerase in code size, but may be a short-sighted dcision if the caller is used later in the call graph. The difficulty in estimating the long-term effects of inlining are also shown in the increased value loss for the dense reward agent.
+
+\subsection{Graph embedding}
+
+\subsubsection{Reward Sparsity}
+
+While sparse rewards perfomed the best in the PPO agent without graph embedding, the situation is different when graph embedding is added to the state representation.
+
+For the GAT agent, the dense reward configuration achieved better performance than the sparse reward configuration and seemed to have perfomed on par with the baseline. I assume 
+
+For the GraphSAGE agent, the sparse reward configuration achieved better performance than the dense reward configuration and was better by around 0.12 percentage points compared to the baseline.
+
+I assume that the increased parameter count caused by attention mechanism and feedforward layers in the GAT agent requires more informative reward signal to learn good embedding. This could be observed in the near zero evaluation reward for the sparse reward GAT agent which suggests that it defaulted to a simple policy of not inlning anything as perhaps embedding was too noisy to learn a better policy.
+
+\subsubsection{Pretrained weights}
+
+As the embedding models are trained at the same time as actor and critic networks, this may lead to instability in the training process e.g. embedding model gradient were on average 2 times higher than the actor and critic gradient. For that reason, I initialize the embedding model with pretrained weights and freeze them during training.
+
+I consider two types of pretrained weights: pretrained on a contrastive loss as suggested in the GraphSAGE paper \cite{sage} and using weights I obtained in the last subsection.
+
+Only utilising pretrained weights from the previous subsection increased the performance of the GAT model by slightly less than 0.2 percentage points, while the GraphSAGE's performance has degraded.
+
+Contrastive pretraining suggested in the GraphSAGE paper tries to learn a general-purpose embedding that similarily represents nodes that are close in the graph. During the pretraining phase, the weights did not seem to converge, which could be caused by low-dimensionality of node's features.
+
+\subsubsection{Retaining the node's original features}
+
+The embedding function \ref{equation:embedding} concatenates the node's original features with the embedding generated by the GNN. GAT contains residual connections while GraphSAGE concatnates node embedding from phase $K-1$ to embedding of neighborhood creating embedding for phase $K$ which could suggeset that the original features are not necessary. I evaluate the performance of the PPO agent with GAT and GraphSAGE embedding where the original node features are removed from the state representation.
+
+Removing the original node features resulted in performance degradation of around 1 percentage point for the GAT agent but was neglibile for the GraphSAGE agent. This attention mechanism dilutes the node's original features and relies more on the neighborhood information, while GraphSAGE's architecture allows it to retain the original node features more effectively.
+
+\subsection{Discussion}
+
+I could not achieve significant improvement over the baseline with the best performing agent being the PPO agent with sparse rewards. Training graph neural networks not only introduces more degrees of freedom but also adds more instability to the training process. More sophisticated training techniques or more extensive hyperparameter tuning are requried to achieve better performance with graph embedding.
+
+\section{Future ideas}
+
+\begin{itemize}
+    \item I considered pretraining the embedding model and freezing its weights during training. Another approach would be to use a pretrained embedding model and allow it to be fine-tuned during training but perhaps decrease the learning rate for the embedding model to reduce the instability.
+    \item While I used PPO as the RL algorithm, there are many other algorithms that could be used to train the inlining agent, especially those that require less tuning like SAC.
+    \item Due to memory constrains I used 8 message-passing layers in the GNN. Perhaps increasing the number of layers would allow the model to capture more long-range dependencies in the call graph. Or not using the K-hop neighborhood and instead if the node has depth D, then use $\frac{D}{K} * i, i \in [1, K]$ -distant neighbours in the i-th layer.
+\end{itemize}
+
+\begin{table}[tb]
+    \vskip 0.15in
+    \begin{center}
+        \begin{small}
+            \begin{tabular}{lc}
+                \toprule
+                \textsc{Hyperparameter} & \textsc{Value} \\
+                \midrule
+                Learning Rate & $1 \times 10^{-4}$ \\
+                Discount Factor ($\gamma$) & $0.99$ \\
+                GAE Parameter ($\lambda$) & $0.95$ \\
+                Clipping Parameter ($\epsilon$) & $0.2$ \\
+                Entropy Coefficient & $0.01$ \\
+                Rollout Length & $1024$ \\
+                \bottomrule
+            \end{tabular}
+        \end{small}
+    \end{center}
+    \caption{Key PPO hyperparameters used for agent training.}
+    \label{tab:ppo-hyperparameters}
+    \vskip -0.1in
+\end{table}
+
+\bibliography{report}
+\bibliographystyle{icml2025}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% APPENDIX
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\appendix
+\onecolumn
+\section{Detailed metrics}
+
+\begin{table}[h]
+
+\vskip 0.15in
+\begin{center}
+\begin{small}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Policy / Model} & \textbf{ASR (\%)} & \textbf{OSR (\%)} \\
+\midrule
+LLVM (Oz) Baseline & 37.66 & 1.44 \\
+\midrule
+\multicolumn{3}{l}{\textit{No GNN}} \\
+PPO (hidden=128) & 26.89 & -12.78 \\
+PPO (hidden=256) & 37.58 & 1.38 \\
+PPO (hidden=1024) & 36.71 & 0.11 \\
+PPO (Sparse Reward) & \textbf{37.91} & \textbf{1.84} \\
+\midrule
+\multicolumn{3}{l}{\textit{GAT Architectures}} \\
+PPO + GAT (Dense) & 37.68 & 1.47 \\
+PPO + GAT (Sparse) & 37.38 & 0.94 \\
+PPO + GAT (Contrastive) & 37.02 & 0.55 \\
+PPO + GAT (Pretrained) & 37.82 & 1.70 \\
+PPO + GAT (Pretrained, no Retain) & 37.23 & 0.85 \\
+\midrule
+\multicolumn{3}{l}{\textit{GraphSAGE Architectures}} \\
+PPO + GraphSAGE (Dense) & 37.33 & 0.96 \\
+PPO + GraphSAGE (Sparse) & 37.75 & 1.58 \\
+PPO + GraphSAGE (Contrastive) & 36.81 & 0.15 \\
+PPO + GraphSAGE (Pretrained) & 36.49 & -0.22 \\
+PPO + GraphSAGE (Pretrained, no Retain) & 36.66 & -0.25 \\
+\bottomrule
+\end{tabular}
+\end{small}
+\end{center}
+
+\caption{Complete evaluation results for all PPO agents. Draw Rate is the percentage of evaluation samples where the agent's gain was identical to the baseline's gain.}
+\label{tab:inlining-results}
+\vskip -0.1in
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\end{document}
+
+
+% This document was modified from the file originally made available by
+% Pat Langley and Andrea Danyluk for ICML-2K. This version was created
+% by Iain Murray in 2018, and modified by Alexandre Bouchard in
+% 2019 and 2021 and by Csaba Szepesvari, Gang Niu and Sivan Sabato in 2022.
+% Modified again in 2023 and 2024 by Sivan Sabato and Jonathan Scarlett.
+% Previous contributors include Dan Roy, Lise Getoor and Tobias
+% Scheffer, which was slightly modified from the 2010 version by
+% Thorsten Joachims & Johannes Fuernkranz, slightly modified from the
+% 2009 version by Kiri Wagstaff and Sam RoIis's 2008 version, which is
+% slightly modified from Prasad Tadepalli's 2007 version which is a
+% lightly changed version of the previous year's version by Andrew
+% Moore, which was in turn edited from those of Kristian Kersting and
+% Codrina Lauth. Alex Smola contributed to the algorithmic style files.

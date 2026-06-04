@@ -137,7 +137,7 @@ def run_training(config: EmbeddingConfig | None):
 
 
 if __name__ == "__main__":
-    typ = "gat"
+    typ = "graphsage"
 
     config = EmbeddingConfig(
         dataset_path="./data/ComPile-4.0GB",

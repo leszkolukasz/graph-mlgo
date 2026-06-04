@@ -20,21 +20,26 @@ WORKDIR /workspace
 COPY external/llvmlite /workspace/external/llvmlite
 
 WORKDIR /workspace/external/llvmlite
-RUN conda build conda-recipes/llvmdev
 
 ENV GIT_DESCRIBE_TAG=0.47.0
 ENV LLVMLITE_VERSION=0.47.0
-RUN conda build conda-recipes/llvmlite --use-local --python 3.12
+
+RUN conda build conda-recipes/llvmdev \
+    && conda build conda-recipes/llvmlite --use-local --python 3.12 \
+    && conda build purge \
+    && conda clean --all -y
 
 WORKDIR /workspace
 COPY environment.yml conda-lock.yml /workspace/
 
 RUN conda-lock -f environment.yml -p linux-64 \
-    && conda-lock install -n graph-mlgo conda-lock.yml
+    && conda-lock install -n graph-mlgo conda-lock.yml \
+    && conda clean --all -y
 
 COPY . /workspace/
 
-RUN conda run --no-capture-output -n graph-mlgo pip install -e . --no-build-isolation
+RUN conda run --no-capture-output -n graph-mlgo pip install --no-cache-dir -e . --no-build-isolation \
+    && conda run --no-capture-output -n graph-mlgo pip cache purge
 
 RUN echo "conda activate graph-mlgo" >> ~/.bashrc
 

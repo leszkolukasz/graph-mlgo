@@ -101,7 +101,9 @@ class LLVMInlineEnv(gym.Env):
         assert self.edge_iterator is not None
 
         if isinstance(action, np.ndarray) or isinstance(action, jnp.ndarray):
-            assert action.shape == (), f"Expected scalar action, got shape {action.shape}"
+            assert action.shape == (), (
+                f"Expected scalar action, got shape {action.shape}"
+            )
             action = action.item()
 
         if action == 1:

@@ -214,3 +214,10 @@ logs
 models*
 wandb
 notes.txt
+
+*.aux
+*.fdb_latexmk
+*.fls
+*.gz
+*.bbl
+*.blg

@@ -7,7 +7,6 @@ import orbax.checkpoint
 from loguru import logger
 from orbax.checkpoint import CheckpointManager, CheckpointManagerOptions
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 from graph_mlgo.agent.config import PPOConfig
 from graph_mlgo.agent.networks import PPOAgent
@@ -16,7 +15,7 @@ from graph_mlgo.agent.utils import load_embedder, make_env, normalize
 from graph_mlgo.constants import MAX_CKPT_TO_KEEP
 from graph_mlgo.dataset import ComPileDataset
 from graph_mlgo.graph.graph import Graph
-from graph_mlgo.ir import compile_module
+from graph_mlgo.ir import compile_module, compile_module_no_opt
 
 
 def run_benchmark(checkpoint_dir: str):
@@ -69,13 +68,18 @@ def run_benchmark(checkpoint_dir: str):
         action, determ_action, _ = agent.act(params, obs_in, key)
         return action, determ_action
 
-    llvm_gains = []
-    agent_gains = []
+    llvm_gains_opt = []
+    llvm_gains_no_opt = []
+    agent_gains_opt = []
+    agent_gains_no_opt = []
     raw_diffs = []
 
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(10, 6))
-    plt.show(block=False)
+    llvm_perc_gains = []
+    agent_perc_gains = []
+
+    # plt.ion()
+    # fig, ax = plt.subplots(figsize=(10, 6))
+    # plt.show(block=False)
 
     bar = tqdm(dataset.test, desc="Benchmarking LLVM vs Agent")
 
@@ -83,7 +87,11 @@ def run_benchmark(checkpoint_dir: str):
         bitcode = item["content"]
 
         graph_llvm = Graph(bitcode)
-        size_baseline, _ = compile_module(str(graph_llvm.module), enable_inlining=False)
+
+        size_baseline_no_opt, _ = compile_module_no_opt(str(graph_llvm.module))
+        size_baseline_opt, _ = compile_module(
+            str(graph_llvm.module), enable_inlining=False
+        )
         size_llvm, _ = compile_module(str(graph_llvm.module), enable_inlining=True)
 
         graph_agent = Graph(bitcode)
@@ -107,47 +115,132 @@ def run_benchmark(checkpoint_dir: str):
 
         size_agent, _ = compile_module(str(graph_agent.module), enable_inlining=False)
 
-        llvm_gain = size_baseline - size_llvm
-        agent_gain = size_baseline - size_agent
+        # logger.info(f"Sample {idx+1}: Baseline Size = {size_baseline} bytes, LLVM Size = {size_llvm} bytes, Agent Size = {size_agent} bytes")
 
-        llvm_gains.append(llvm_gain)
-        agent_gains.append(agent_gain)
-        raw_diffs.append(agent_gain - llvm_gain)
+        llvm_gain_opt = size_baseline_opt - size_llvm
+        agent_gain_opt = size_baseline_opt - size_agent
 
-        avg_llvm_gain = np.mean(llvm_gains)
-        avg_agent_gain = np.mean(agent_gains)
-        avg_diff = avg_agent_gain - avg_llvm_gain
+        llvm_gain_no_opt = size_baseline_no_opt - size_llvm
+        agent_gain_no_opt = size_baseline_no_opt - size_agent
+
+        llvm_perc_gain = (
+            (llvm_gain_no_opt / size_baseline_no_opt) * 100
+            if size_baseline_no_opt > 0
+            else 0
+        )
+        agent_perc_gain = (
+            (agent_gain_no_opt / size_baseline_no_opt) * 100
+            if size_baseline_no_opt > 0
+            else 0
+        )
+
+        llvm_gains_opt.append(llvm_gain_opt)
+        agent_gains_opt.append(agent_gain_opt)
+        llvm_gains_no_opt.append(llvm_gain_no_opt)
+        agent_gains_no_opt.append(agent_gain_no_opt)
+        llvm_perc_gains.append(llvm_perc_gain)
+        agent_perc_gains.append(agent_perc_gain)
+
+        raw_diffs.append(agent_gain_opt - llvm_gain_opt)
+
+        avg_llvm_gain_opt = np.mean(llvm_gains_opt)
+        avg_agent_gain_opt = np.mean(agent_gains_opt)
+        avg_llvm_gain_no_opt = np.mean(llvm_gains_no_opt)
+        avg_agent_gain_no_opt = np.mean(agent_gains_no_opt)
+        avg_llvm_perc_gain = np.mean(llvm_perc_gains)
+        avg_agent_perc_gain = np.mean(agent_perc_gains)
 
         bar.set_postfix(
             {
-                "Avg LLVM": f"{avg_llvm_gain:.2f} bytes",
-                "Avg Agent": f"{avg_agent_gain:.2f} bytes",
-                "Avg Diff": f"{avg_diff:.2f} bytes",
+                "LLVM (Opt)": f"{avg_llvm_gain_opt:.2f} bytes",
+                "Agent (Opt)": f"{avg_agent_gain_opt:.2f} bytes",
+                "LLVM (No Opt)": f"{avg_llvm_gain_no_opt:.2f} bytes",
+                "Agent (No Opt)": f"{avg_agent_gain_no_opt:.2f} bytes",
+                "Diff (No Opt)": f"{(avg_agent_gain_no_opt - avg_llvm_gain_no_opt):.2f} bytes",
+                "LLVM % Gain": f"{avg_llvm_perc_gain:.2f}%",
+                "Agent % Gain": f"{avg_agent_perc_gain:.2f}%",
             }
         )
 
-        if idx % 20 == 0 and idx > 0:
-            ax.clear()
-            ax.hist(raw_diffs, bins=100, alpha=0.7, color="blue")
-            
-            ax.set_title(f"Distribution of Agent vs LLVM Size Gains (n={idx+1})")
-            ax.set_xlabel("Agent Gain - LLVM Gain (bytes)")
-            ax.set_ylabel("Frequency")
-            ax.grid(True)
-            
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+        # if idx % 20 == 0 and idx > 0:
+        #     ax.clear()
+        #     ax.hist(raw_diffs, bins=100, alpha=0.7, color="blue")
 
-    logger.info(f"Avg LLVM Gain: {avg_llvm_gain:.2f} bytes")
-    logger.info(f"Avg Agent Gain: {avg_agent_gain:.2f} bytes")
-    logger.info(f"Avg Diff (Agent - LLVM): {avg_diff:.2f} bytes")
+        #     ax.set_title(f"Distribution of Agent vs LLVM Size Gains (n={idx + 1})")
+        #     ax.set_xlabel("Agent Gain - LLVM Gain (bytes)")
+        #     ax.set_ylabel("Frequency")
+        #     ax.grid(True)
 
-    return llvm_gains, agent_gains
+        #     fig.canvas.draw()
+        #     fig.canvas.flush_events()
+
+    logger.info(f"Avg LLVM Gain (Opt): {avg_llvm_gain_opt:.2f} bytes")
+    logger.info(f"Avg Agent Gain (Opt): {avg_agent_gain_opt:.2f} bytes")
+    logger.info(f"Avg LLVM Gain (No Opt): {avg_llvm_gain_no_opt:.2f} bytes")
+    logger.info(f"Avg Agent Gain (No Opt): {avg_agent_gain_no_opt:.2f} bytes")
+    logger.info(f"Avg LLVM % Gain: {avg_llvm_perc_gain:.2f}%")
+    logger.info(f"Avg Agent % Gain: {avg_agent_perc_gain:.2f}%")
+
+    return (
+        llvm_gains_opt,
+        agent_gains_opt,
+        llvm_gains_no_opt,
+        agent_gains_no_opt,
+        llvm_perc_gains,
+        agent_perc_gains,
+    )
 
 
 if __name__ == "__main__":
-    checkpoint_dir = "./models/ppo/fixed2_ppo"
-    avg_llvm_gains, avg_agent_gains = run_benchmark(checkpoint_dir)
+    # checkpoint_dir = "./models_final/ppo/paper_ppo_sage_contr"
+    checkpoint_dirs = [
+        # "./models_final/ppo/paper_ppo_256_best",
+        # "./models_final/ppo/paper_ppo_gat_pretrain_best",
+        # "./models_final/ppo/paper_ppo_gat_pretrain_noretain",
+        # "./models_final/ppo/paper_ppo_gat_pretrain_noretain_best",
+        # "./models_final/ppo/paper_ppo_gat_sparse_3",
+        # "./models_final/ppo/paper_ppo_gat_sparse_3_best",
+        # "./models_final/ppo/paper_ppo_sage_3_best",
+        # "./models_final/ppo/paper_ppo_sage_contr_best",
+        # "./models_final/ppo/paper_ppo_sparse_3_best",
+        # "./models_final/ppo/paper_ppo_sage_pretrain_best",
+        # "./models_final/ppo/paper_ppo_sage_sparse_4",
+        # "./models_final/ppo/paper_ppo_sage_pretrain_noretain",
+        # "./models_final/ppo/paper_ppo_sage_pretrain_noretain_best",
+        "./models_final/ppo/paper_ppo_sparse_3_mlgo",
+    ]
 
-    np.save(os.path.join(checkpoint_dir, "llvm_gains.npy"), np.array(avg_llvm_gains))
-    np.save(os.path.join(checkpoint_dir, "agent_gains.npy"), np.array(avg_agent_gains))
+    for checkpoint_dir in checkpoint_dirs:
+        (
+            avg_llvm_gains_opt,
+            avg_agent_gains_opt,
+            avg_llvm_gains_no_opt,
+            avg_agent_gains_no_opt,
+            avg_llvm_perc_gains,
+            avg_agent_perc_gains,
+        ) = run_benchmark(checkpoint_dir)
+
+        np.save(
+            os.path.join(checkpoint_dir, "llvm_gains_opt.npy"),
+            np.array(avg_llvm_gains_opt),
+        )
+        np.save(
+            os.path.join(checkpoint_dir, "agent_gains_opt.npy"),
+            np.array(avg_agent_gains_opt),
+        )
+        np.save(
+            os.path.join(checkpoint_dir, "llvm_gains_no_opt.npy"),
+            np.array(avg_llvm_gains_no_opt),
+        )
+        np.save(
+            os.path.join(checkpoint_dir, "agent_gains_no_opt.npy"),
+            np.array(avg_agent_gains_no_opt),
+        )
+        np.save(
+            os.path.join(checkpoint_dir, "llvm_perc_gains.npy"),
+            np.array(avg_llvm_perc_gains),
+        )
+        np.save(
+            os.path.join(checkpoint_dir, "agent_perc_gains.npy"),
+            np.array(avg_agent_perc_gains),
+        )
