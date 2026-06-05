@@ -125,6 +125,7 @@ def plot_benchmark_for_metric(
             agent_values = llvm_values - agent_values
         elif diff == "agent_minus_llvm":
             agent_values = agent_values - llvm_values
+            # agent_values = agent_values[agent_values != 0]
 
         # if model_name == "PPO sparse reward Best":
         #     print(agent_values)
@@ -164,6 +165,8 @@ def plot_benchmark_for_metric(
             line_dash="solid",
             line_color="black",
             row=current_row,
+            annotation_text="Q2",
+            annotation_position="top right",
             col=1,
         )
         fig.add_vline(
@@ -171,6 +174,8 @@ def plot_benchmark_for_metric(
             line_width=1,
             line_dash="dash",
             line_color="rgba(0, 0, 0, 0.6)",
+            annotation_text="Q1",
+            annotation_position="top right",
             row=current_row,
             col=1,
         )
@@ -179,13 +184,13 @@ def plot_benchmark_for_metric(
             line_width=1,
             line_dash="dash",
             line_color="rgba(0, 0, 0, 0.6)",
+            annotation_text="Q3",
+            annotation_position="top right",
             row=current_row,
             col=1,
         )
 
-        fig.update_yaxes(
-            title_text=model_name.replace("PPO ", ""), row=current_row, col=1
-        )
+        fig.update_yaxes(title_text=model_name, row=current_row, col=1)
         current_row += 1
 
     dynamic_height = 130 * num_rows
@@ -194,7 +199,7 @@ def plot_benchmark_for_metric(
         title=plot_name,
         template="plotly_white",
         font=dict(size=8),
-        margin=dict(l=150, r=40, t=60, b=60),
+        margin=dict(l=40, r=40, t=60, b=60),
         height=dynamic_height,
         width=1000,
     )
@@ -205,7 +210,7 @@ def plot_benchmark_for_metric(
     fig.update_xaxes(title_text=yaxis_name, row=num_rows, col=1)
 
     fig.write_image(
-        f"plots/{plot_name.replace(' ', '_')}.png", width=600, height=1200, scale=2
+        f"plots/{plot_name.replace(' ', '_')}.png", width=600, height=400, scale=2
     )
 
 
@@ -270,40 +275,40 @@ def calc_perc_gain_opt(checkpoint_dirs: list[tuple[str, str]]):
 
 
 def plot_benchmark_results(checkpoint_dirs: list[tuple[str, str]]):
-    # plot_benchmark_for_metric(
-    #     checkpoint_dirs,
-    #     value_type="gains_no_opt",
-    #     plot_name="Size reduction",
-    #     yaxis_name="Size reduction (bytes)",
-    #     y_limit=(-300, 3000),
-    # )
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="gains_no_opt",
+        plot_name="Size reduction",
+        yaxis_name="Size reduction (bytes)",
+        y_limit=(-300, 3000),
+    )
 
-    # plot_benchmark_for_metric(
-    #     checkpoint_dirs,
-    #     value_type="gains_no_opt",
-    #     plot_name="Size reduction (vs LLVM)",
-    #     yaxis_name="Size reduction (bytes)",
-    #     diff="agent_minus_llvm",
-    #     y_limit=(-300, 300),
-    #     bin_width=10,
-    # )
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="gains_no_opt",
+        plot_name="Size reduction (vs LLVM)",
+        yaxis_name="Size reduction (bytes)",
+        diff="agent_minus_llvm",
+        y_limit=(-300, 300),
+        bin_width=10,
+    )
 
-    # plot_benchmark_for_metric(
-    #     checkpoint_dirs,
-    #     value_type="gains_opt",
-    #     plot_name="Size reduction (excluding other passes)",
-    #     yaxis_name="Size reduction (bytes)",
-    #     y_limit=(-200, 200),
-    # )
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="gains_opt",
+        plot_name="Size reduction (excluding other passes)",
+        yaxis_name="Size reduction (bytes)",
+        y_limit=(-200, 200),
+    )
 
-    # plot_benchmark_for_metric(
-    #     checkpoint_dirs,
-    #     value_type="gains_opt",
-    #     plot_name="Size reduction (excluding other passes, vs LLVM)",
-    #     yaxis_name="Size reduction (bytes)",
-    #     diff="agent_minus_llvm",
-    #     y_limit=(-200, 200),
-    # )
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="gains_opt",
+        plot_name="Size reduction (excluding other passes, vs LLVM)",
+        yaxis_name="Size reduction (bytes)",
+        diff="agent_minus_llvm",
+        y_limit=(-200, 200),
+    )
 
     plot_benchmark_for_metric(
         checkpoint_dirs,
@@ -312,13 +317,14 @@ def plot_benchmark_results(checkpoint_dirs: list[tuple[str, str]]):
         yaxis_name="Percentage size reduction (%)",
     )
 
-    # plot_benchmark_for_metric(
-    #     checkpoint_dirs,
-    #     value_type="perc_gains",
-    #     plot_name="Percentage size reduction (vs LLVM)",
-    #     yaxis_name="Percentage size reduction (%)",
-    #     diff="agent_minus_llvm",
-    # )
+    plot_benchmark_for_metric(
+        checkpoint_dirs,
+        value_type="perc_gains",
+        plot_name="Percentage size reduction (vs LLVM)",
+        yaxis_name="Percentage size reduction (%)",
+        diff="agent_minus_llvm",
+        y_limit=(-40, 40),
+    )
 
     calc_perc_gain_opt(checkpoint_dirs)
 
@@ -378,38 +384,38 @@ if __name__ == "__main__":
     # ]
 
     checkpoints_to_compare = [
-        ("./models_final/ppo/paper_ppo_128_best", "PPO hidden=128 Best"),
-        ("./models_final/ppo/paper_ppo_256_best", "PPO hidden=256 Best"),
-        ("./models_final/ppo/paper_ppo_1024_best", "PPO hidden=1024 Best"),
-        ("./models_final/ppo/paper_ppo_sparse_3_best", "PPO Sparse Reward Best"),
-        ("./models_final/ppo/paper_ppo_gat_3", "PPO + GAT"),
-        (
-            "./models_final/ppo/paper_ppo_gat_sparse_3_best",
-            "PPO + GAT Sparse Reward Best",
-        ),
-        ("./models_final/ppo/paper_ppo_gat_contr_best", "PPO + GAT Contrastive Best"),
-        ("./models_final/ppo/paper_ppo_gat_pretrain_best", "PPO + GAT Pretrained Best"),
-        (
-            "./models_final/ppo/paper_ppo_gat_pretrain_noretain_best",
-            "PPO + GAT Pretrained, no Retain Best",
-        ),
-        ("./models_final/ppo/paper_ppo_sage_3_best", "PPO + GraphSAGE Best"),
-        (
-            "./models_final/ppo/paper_ppo_sage_sparse_4_best",
-            "PPO + GraphSAGE Sparse Reward Best",
-        ),
-        (
-            "./models_final/ppo/paper_ppo_sage_contr_best",
-            "PPO + GraphSAGE Contrastive Best",
-        ),
-        (
-            "./models_final/ppo/paper_ppo_sage_pretrain_best",
-            "PPO + GraphSAGE Pretrained Best",
-        ),
-        (
-            "./models_final/ppo/paper_ppo_sage_pretrain_noretain_best",
-            "PPO + GraphSAGE Pretrained, no Retain Best",
-        ),
+        # ("./models_final/ppo/paper_ppo_128_best", "PPO hidden=128 Best"),
+        # ("./models_final/ppo/paper_ppo_256_best", "PPO hidden=256 Best"),
+        # ("./models_final/ppo/paper_ppo_1024_best", "PPO hidden=1024 Best"),
+        ("./models_final/ppo/paper_ppo_sparse_3_best", "PPO (Sparse)"),
+        # ("./models_final/ppo/paper_ppo_gat_3", "PPO + GAT"),
+        # (
+        #     "./models_final/ppo/paper_ppo_gat_sparse_3_best",
+        #     "PPO + GAT Sparse Reward Best",
+        # ),
+        # ("./models_final/ppo/paper_ppo_gat_contr_best", "PPO + GAT Contrastive Best"),
+        # ("./models_final/ppo/paper_ppo_gat_pretrain_best", "PPO + GAT Pretrained Best"),
+        # (
+        #     "./models_final/ppo/paper_ppo_gat_pretrain_noretain_best",
+        #     "PPO + GAT Pretrained, no Retain Best",
+        # ),
+        # ("./models_final/ppo/paper_ppo_sage_3_best", "PPO + GraphSAGE Best"),
+        # (
+        #     "./models_final/ppo/paper_ppo_sage_sparse_4_best",
+        #     "PPO + GraphSAGE Sparse Reward Best",
+        # ),
+        # (
+        #     "./models_final/ppo/paper_ppo_sage_contr_best",
+        #     "PPO + GraphSAGE Contrastive Best",
+        # ),
+        # (
+        #     "./models_final/ppo/paper_ppo_sage_pretrain_best",
+        #     "PPO + GraphSAGE Pretrained Best",
+        # ),
+        # (
+        #     "./models_final/ppo/paper_ppo_sage_pretrain_noretain_best",
+        #     "PPO + GraphSAGE Pretrained, no Retain Best",
+        # ),
     ]
 
     plot_benchmark_results(checkpoints_to_compare)

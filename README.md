@@ -1,4 +1,12 @@
-# Setup
+# GraphMLGO - Topology-aware Machine Learning Guided Compiler Optimizations Framework
+
+This repository contains the code for the mini-paper "GraphMLGO: Topology-aware Machine Learning Guided Compiler Optimizations Framework". The paper is available in the `paper` directory.
+
+Main contributions of this project are:
+- development of a custom reinforcement learning environment designed specifically for training inlining-for-size agents.
+- implementation, evaluation and comparison of two graph embedding techniques: GraphSAGE and Graph Attention Networks (GAT).
+
+## Setup
 
 ```
 conda install conda-build
@@ -19,7 +27,7 @@ pip install -e . --no-build-isolation
 ```
 
 
-# Install package
+## Install package
 
 ```
 Add package to environment.yml
